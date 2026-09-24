@@ -40,6 +40,9 @@ fn dispatch(args: &[String]) -> Result<(), Error> {
         Some("verify-receipt") => cmd_verify(args),
         Some("export-merge") => cmd_merge(args),
         Some("fork-status") => cmd_fork(args),
+        Some("talk") => cmd_talk(args),
+        Some("explain-talk") => cmd_explain_talk(args),
+        Some("explain-log") => cmd_explain_log(args),
         _ => Err(Error::new("unknown command")),
     }
 }
@@ -283,6 +286,52 @@ fn cmd_fork(args: &[String]) -> Result<(), Error> {
         peer.as_deref().map(Path::new),
     )?;
     println!("fork {}", if yes { "yes" } else { "no" });
+    println!("ok");
+    Ok(())
+}
+
+fn cmd_talk(args: &[String]) -> Result<(), Error> {
+    let kind = args.get(1).ok_or_else(|| Error::new("usage: talk say|offer|counter|agree|blob-ref"))?;
+    let talk = match kind.as_str() {
+        "say" => wire_core::talk::Talk::Say(require(args, "text")?),
+        "offer" | "counter" => {
+            let minor: u32 = require(args, "minor")?.parse().map_err(|_| Error::new("bad minor"))?;
+            let currency: u16 = require(args, "currency")?.parse().map_err(|_| Error::new("bad currency"))?;
+            let terms = wire_core::talk::hash_bytes(&fs::read(require(args, "terms-file")?)?);
+            if kind == "offer" {
+                wire_core::talk::Talk::Offer { minor, currency, terms }
+            } else {
+                wire_core::talk::Talk::Counter { minor, currency, terms }
+            }
+        }
+        "agree" => wire_core::talk::Talk::Agree {
+            terms: wire_core::talk::hash_bytes(&fs::read(require(args, "terms-file")?)?),
+        },
+        "blob-ref" => {
+            let size: u32 = require(args, "size")?.parse().map_err(|_| Error::new("bad size"))?;
+            let hash = wire_core::talk::hash_bytes(&fs::read(require(args, "data-file")?)?);
+            wire_core::talk::Talk::BlobRef { size, hash }
+        }
+        _ => return Err(Error::new("unknown talk kind")),
+    };
+    let bytes = talk.encode();
+    fs::write(require(args, "out")?, &bytes)?;
+    println!("bytes {}", bytes.len());
+    println!("ok");
+    Ok(())
+}
+
+fn cmd_explain_talk(args: &[String]) -> Result<(), Error> {
+    let bytes = fs::read(require(args, "data-file")?)?;
+    let talk = wire_core::talk::Talk::decode(&bytes)?;
+    println!("{}", wire_core::talk::to_text(&talk));
+    println!("ok");
+    Ok(())
+}
+
+fn cmd_explain_log(args: &[String]) -> Result<(), Error> {
+    let text = ops::explain_channel(Path::new(&require(args, "home")?), &parse_id(&require(args, "channel")?)?)?;
+    print!("{text}");
     println!("ok");
     Ok(())
 }

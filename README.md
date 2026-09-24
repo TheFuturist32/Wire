@@ -13,9 +13,12 @@ Repo/brand: **TheFuturist** git only. Codename: **Wire**.
 3. **[docs/Threat-Model-2026-09-24.md](docs/Threat-Model-2026-09-24.md)** — adversaries and trust boundaries
 4. **[docs/Compaction-Policy-2026-09-24.md](docs/Compaction-Policy-2026-09-24.md)** — unilateral local truncate of the persisted log
 5. **[docs/Tool-Card-2026-09-24.md](docs/Tool-Card-2026-09-24.md)** — instructions any tool-calling AI uses; safeguards live in the plugin
-6. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
+6. **[docs/Talk-Codec-2026-09-24.md](docs/Talk-Codec-2026-09-24.md)** — compact AI-to-AI payload; human text is a view
+7. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
 
 `wire-node serve` is the on-device plugin: one vault, many delegated runtimes, and the same commands over a localhost socket. A policy file can cap payload size and require a host-held confirm token before share or proceed.
+
+AI-to-AI offers use the talk codec (an offer is 39 bytes and does not store the words `USD` or `10.00`). `wire-node explain-talk` and `wire-node explain-log` render text on demand and do not rewrite storage.
 
 ## Layout
 

@@ -373,6 +373,11 @@ pub fn verify_receipt(bundle: &[u8], content: Option<&[u8]>) -> Result<()> {
     model::verify_bundle(&decoded, content)
 }
 
+pub fn explain_channel(home: &Path, channel: &[u8; 32]) -> Result<String> {
+    let chain = load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
+    Ok(crate::explain::events(chain.events()))
+}
+
 pub fn export_merge(home: &Path, channel: &[u8; 32], include_pii: bool) -> Result<String> {
     let chain = load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
     let mut out = String::new();
