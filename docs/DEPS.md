@@ -13,5 +13,6 @@ Versions below are the ones `Cargo.lock` resolved.
 | `chacha20poly1305` | 0.10.1 | XChaCha20-Poly1305 AEAD for envelopes (`suite_id = 1`) | Apache-2.0 OR MIT | RustCrypto | Implementing AEAD — rejected |
 | `sha2` | 0.10.9 | SHA-256 for event ids, content hashes, principal ids, seal-key derivation | Apache-2.0 OR MIT | RustCrypto | A non-crypto hash for ids — rejected |
 | `rand` | 0.8.8 | Key generation and nonces via `OsRng` | MIT OR Apache-2.0 | RustCrypto | Calling `getrandom` directly — extra unsafe surface |
+| `lz4_flex` | 0.11.6 | LZ4 for cold archives and large payloads, only when the output shrinks. Decode is a short memory pass. | MIT | Pure Rust, no C toolchain | zstd/xz — denser, slower to open when an AI needs the bytes again |
 
 `suite_id = 2` has no implementation. Post-quantum hybrids are an upgrade of this table, not a change to the envelope version field.

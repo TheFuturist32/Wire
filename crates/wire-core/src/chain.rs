@@ -260,11 +260,16 @@ impl Chain {
         Ok(())
     }
 
+    /// Rotated archive. Compressed only when the file shrinks.
+    pub fn save_cold(&self, path: &Path) -> Result<()> {
+        crate::pack::write_cold(path, &self.encode())
+    }
+
     pub fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::new());
         }
-        Self::decode(&fs::read(path)?)
+        Self::decode(&crate::pack::read_stored(path)?)
     }
 
     /// Ancestors of `covered_tip` move to the returned archive. The tip, its

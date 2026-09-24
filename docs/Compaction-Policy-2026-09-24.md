@@ -167,7 +167,7 @@ Threat model D still applies: relay sees metadata (who, when, sizes).
 
 Enough to prove the policy isn’t fiction:
 
-1. Process A unilaterally truncates persisted events below the tip (no B ack). The fixture is a receipt, not a pixel blob. B keeps a full log.
+1. Process A unilaterally truncates persisted events below the tip (no B ack). The rotated archive is LZ4-compressed when that shrinks it. The hot log stays uncompressed. The fixture is a receipt, not a pixel blob. B keeps a full log.
 2. A verifies that receipt via the local archive. Without the archive, verify fails honestly.
 3. `snapshot` / `ack_snapshot` remain optional shared checkpoints. They do not gate A's truncate, and the prototype does not require them for the truncate test.
 4. Under fork: A may still truncate locally. Fork status still reports the divergence. Sibling tips are not archived away to hide the fork.

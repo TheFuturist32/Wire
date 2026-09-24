@@ -554,6 +554,8 @@ fn t10_truncate_verifies_from_archive_only() {
     ]);
     let b_after = fs::read(log_file(&b.home, &channel)).unwrap();
     assert_eq!(b_before, b_after);
+    let hot = fs::read(log_file(&a.home, &channel)).unwrap();
+    assert!(hot.starts_with(b"WLOG"), "hot log stays uncompressed");
     let bundle = tmp.path().join("receipt.bin");
     ok(&[
         "export-receipt",
@@ -752,7 +754,15 @@ fn t15_retain_is_not_the_channel_log() {
     ]);
     let mut kept = Vec::new();
     files_under(&retain, &mut kept);
-    assert!(kept.iter().any(|p| file_contains(p, MARKER)));
+    assert!(kept.iter().any(|p| {
+        let stored = fs::read(p).unwrap();
+        stored.starts_with(b"WLZ4") && stored.len() < 2048 && {
+            let plain = wire_core::pack::read_stored(p).unwrap();
+            plain.windows(MARKER.len()).any(|w| w == MARKER)
+        }
+    }));
+    let hot = fs::read(log_file(&a.home, &channel)).unwrap();
+    assert!(hot.starts_with(b"WLOG"));
     assert!(!file_contains(&log_file(&a.home, &channel), MARKER));
     assert!(!file_contains(&log_file(&b.home, &channel), MARKER));
 }

@@ -9,5 +9,6 @@ pub mod metrics;
 pub mod model;
 pub mod net;
 pub mod ops;
+pub mod pack;
 pub mod plugin;
 pub mod talk;

@@ -11,6 +11,7 @@
 - `Compaction-Policy-2026-09-24.md` — unilateral truncate v0.1
 - `Tool-Card-2026-09-24.md` — model-facing tool instructions and plugin safeguards
 - `Observability-2026-09-24.md` — optional transfer-rate feed; not a ledger
+- `Compression-2026-09-24.md` — LZ4 for cold files and large payloads
 
 ---
 
@@ -368,7 +369,8 @@ The model does not need to understand Wire natively. A tool adapter beside the m
 |---|---|---|
 | **Phase 1 — PoC** | Library, one-shot node, relay, §11 tests including 8×32 scale | Landed |
 | **Phase 2 — plugin** | `wire-node serve`, tool card, confirm/size policy, scripted buyer/seller wedge | Landed |
-| **Observability** | Optional text metrics on the relay. Separate from channel storage. | This commit |
+| **Observability** | Optional text metrics on the relay. Separate from channel storage. | Landed |
+| **Compression** | LZ4 on rotated archives and large payloads only. Live log stays raw. | This commit |
 | **Later** | Real model adapters, PQ, production relay | After the wedge |
 
 ---

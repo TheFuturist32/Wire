@@ -138,11 +138,11 @@ pub fn send_frame(runtime_path: &Path, home: &Path, channel: &[u8; 32], payload:
         if id == &runtime.cred_id() {
             continue;
         }
-        seal_push(relay, &runtime, cred, channel, payload, KIND_EPHEMERAL)?;
+        seal_push(relay, &runtime, cred, channel, &crate::pack::pack_payload(payload), KIND_EPHEMERAL)?;
     }
     if let Some(dir) = retain {
-        fs::create_dir_all(dir)?;
-        fs::write(dir.join(format!("{}.bin", to_hex(&crypto::random32()))), payload)?;
+        let file = dir.join(format!("{}.bin", to_hex(&crypto::random32())));
+        crate::pack::write_cold(&file, payload)?;
     }
     let after = fs::read(log_path(home, channel)).unwrap_or_default();
     if before != after {
@@ -324,7 +324,7 @@ pub fn truncate(home: &Path, channel: &[u8; 32]) -> Result<()> {
     if arch.exists() {
         return Err(Error::new("archive already exists"));
     }
-    archive.save(&arch)?;
+    archive.save_cold(&arch)?;
     chain.save(&path)?;
     Ok(())
 }
@@ -407,11 +407,12 @@ fn state_of(chain: &Chain, proposal: &[u8; 32]) -> &'static str {
 fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Option<&Path>) -> Result<Option<Vec<u8>>> {
     let opened = crypto::open(&runtime.agree, &runtime.cred_id(), bytes)?;
     if opened.kind == KIND_EPHEMERAL {
+        let plain = crate::pack::unpack_payload(&opened.plaintext)?;
         if let Some(dir) = inbox {
             fs::create_dir_all(dir)?;
-            fs::write(dir.join(format!("{}.bin", to_hex(&crypto::sha256(&opened.plaintext)))), &opened.plaintext)?;
+            fs::write(dir.join(format!("{}.bin", to_hex(&crypto::sha256(&plain)))), &plain)?;
         }
-        return Ok(Some(opened.plaintext));
+        return Ok(Some(plain));
     }
     if opened.kind != KIND_LEDGER {
         return Err(Error::new("unknown envelope kind"));

@@ -15,7 +15,8 @@ Repo/brand: **TheFuturist** git only. Codename: **Wire**.
 5. **[docs/Tool-Card-2026-09-24.md](docs/Tool-Card-2026-09-24.md)** — instructions any tool-calling AI uses; safeguards live in the plugin
 6. **[docs/Talk-Codec-2026-09-24.md](docs/Talk-Codec-2026-09-24.md)** — compact AI-to-AI payload; human text is a view
 7. **[docs/Observability-2026-09-24.md](docs/Observability-2026-09-24.md)** — optional text feed of transfer rates, separate from the channel log
-8. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
+8. **[docs/Compression-2026-09-24.md](docs/Compression-2026-09-24.md)** — LZ4 on cold files and large payloads; the live log stays raw
+9. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
 
 `wire-node serve` is the on-device plugin: one vault, many delegated runtimes, and the same commands over a localhost socket. A policy file can cap payload size and require a host-held confirm token before share or proceed.
 
