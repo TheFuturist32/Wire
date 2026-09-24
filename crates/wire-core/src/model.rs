@@ -141,7 +141,11 @@ impl RuntimeSecret {
         let sign = SignSecret::generate();
         let agree = AgreeSecret::generate();
         let now = crypto::now_unix();
-        let not_after = if ttl_secs == 0 { 0 } else { now.saturating_add(ttl_secs) };
+        let not_after = if ttl_secs == 0 {
+            0
+        } else {
+            now.saturating_add(ttl_secs)
+        };
         let mut cred = Credential {
             root_pub: root.public(),
             runtime_id: crypto::random32(),

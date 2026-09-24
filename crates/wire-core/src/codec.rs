@@ -1,12 +1,13 @@
 use crate::error::{Error, Result};
 
+#[derive(Default)]
 pub struct Writer {
     buf: Vec<u8>,
 }
 
 impl Writer {
     pub fn new() -> Self {
-        Self { buf: Vec::new() }
+        Self::default()
     }
 
     pub fn u8(&mut self, v: u8) {
@@ -137,7 +138,7 @@ pub fn to_hex(bytes: &[u8]) -> String {
 }
 
 pub fn from_hex(s: &str) -> Result<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(Error::new("odd hex"));
     }
     let bytes = s.as_bytes();

@@ -151,7 +151,9 @@ pub fn require_suite(suite: u16) -> Result<()> {
     if suite == SUITE_CLASSICAL {
         Ok(())
     } else if suite == SUITE_STUB {
-        Err(Error::new("suite_id 2 is an agility stub and cannot seal or sign"))
+        Err(Error::new(
+            "suite_id 2 is an agility stub and cannot seal or sign",
+        ))
     } else {
         Err(Error::new(format!("unknown suite_id {suite}")))
     }
@@ -179,6 +181,7 @@ pub struct Envelope {
     pub plaintext: Vec<u8>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn seal(
     suite: u16,
     kind: u8,

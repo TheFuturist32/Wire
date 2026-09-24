@@ -31,7 +31,10 @@ pub struct Summary {
 }
 
 pub fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 pub fn header() -> &'static str {
@@ -86,7 +89,9 @@ fn parse_line(line: &str) -> Result<Record> {
     let mut kind = None;
     let mut channel = None;
     for part in parts {
-        let (key, value) = part.split_once('=').ok_or_else(|| Error::new("bad metrics field"))?;
+        let (key, value) = part
+            .split_once('=')
+            .ok_or_else(|| Error::new("bad metrics field"))?;
         match key {
             "time_ms" => time_ms = Some(value.parse().map_err(|_| Error::new("bad time_ms"))?),
             "sender" => sender = Some(parse_id_hex(value)?),
@@ -146,7 +151,11 @@ pub fn summarize(records: &[Record]) -> Summary {
         persisted_transfers: 0,
         persisted_bytes: 0,
         in_flight: 0,
-        window_ms: if records.is_empty() { 0 } else { last.saturating_sub(first) },
+        window_ms: if records.is_empty() {
+            0
+        } else {
+            last.saturating_sub(first)
+        },
         ack_latency_ms_max: 0,
     };
     for (id, push) in &pushes {
@@ -186,9 +195,8 @@ pub fn format_summary(summary: &Summary) -> String {
 }
 
 fn rate(bytes: u64, window_ms: u64) -> u64 {
-    if window_ms == 0 {
-        0
-    } else {
-        bytes.saturating_mul(1000) / window_ms
-    }
+    bytes
+        .saturating_mul(1000)
+        .checked_div(window_ms)
+        .unwrap_or(0)
 }

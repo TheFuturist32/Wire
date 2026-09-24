@@ -3,10 +3,19 @@ mod common;
 use std::fs;
 use std::path::Path;
 
-use common::{fail, field, file_contains, files_under, join, log_file, node, ok, party, payload, Relay, Tmp, MARKER};
+use common::{
+    fail, field, file_contains, files_under, join, log_file, node, ok, party, payload, Relay, Tmp,
+    MARKER,
+};
 use wire_core::net::{self, OP_LIST, ST_ERR};
 
-fn deal(a: &common::Party, b: &common::Party, relay: &str, channel: &str, content: &Path) -> String {
+fn deal(
+    a: &common::Party,
+    b: &common::Party,
+    relay: &str,
+    channel: &str,
+    content: &Path,
+) -> String {
     let proposed = ok(&[
         "receipt",
         "propose",
@@ -167,7 +176,9 @@ fn t2_offline_delivery_waits_in_the_relay() {
     ]);
     let mut delivered = Vec::new();
     files_under(&inbox, &mut delivered);
-    assert!(delivered.iter().any(|p| file_contains(p, b"delivered-after-reconnect")));
+    assert!(delivered
+        .iter()
+        .any(|p| file_contains(p, b"delivered-after-reconnect")));
 }
 
 #[test]
@@ -210,7 +221,11 @@ fn t4_and_t16_two_parties_finalize_and_a_stranger_verifies() {
         "--content-file",
         content.to_str().unwrap(),
     ]);
-    assert!(verified.status.success(), "{}", String::from_utf8_lossy(&verified.stderr));
+    assert!(
+        verified.status.success(),
+        "{}",
+        String::from_utf8_lossy(&verified.stderr)
+    );
     let wrong = tmp.path().join("wrong.bin");
     fs::write(&wrong, b"price-11-usd").unwrap();
     let rejected = fail(&[
@@ -226,7 +241,11 @@ fn t4_and_t16_two_parties_finalize_and_a_stranger_verifies() {
     tampered[last] ^= 0x5a;
     let bad = tmp.path().join("bad.bin");
     fs::write(&bad, tampered).unwrap();
-    assert!(!node(&["verify-receipt", "--bundle", bad.to_str().unwrap()]).status.success());
+    assert!(
+        !node(&["verify-receipt", "--bundle", bad.to_str().unwrap()])
+            .status
+            .success()
+    );
 }
 
 #[test]
@@ -715,7 +734,9 @@ fn t12_merge_can_omit_share_events() {
         "--out",
         full.to_str().unwrap(),
     ]);
-    assert!(fs::read_to_string(&full).unwrap().contains("share_identity"));
+    assert!(fs::read_to_string(&full)
+        .unwrap()
+        .contains("share_identity"));
 }
 
 #[test]

@@ -19,7 +19,11 @@ fn line(event: &Event) -> String {
     match event.typ {
         T_MEMBER_ADD => match parse_member_add(&event.body) {
             Ok((cred, caps, _token, _gen)) => {
-                format!("member_add cred {} caps {}", short(&cred.id()), caps_text(caps))
+                format!(
+                    "member_add cred {} caps {}",
+                    short(&cred.id()),
+                    caps_text(caps)
+                )
             }
             Err(_) => "member_add unparsed".to_string(),
         },
@@ -99,6 +103,10 @@ mod tests {
         let elapsed = started.elapsed();
         assert!(text.lines().count() == 1000);
         assert!(text.contains("propose proposal"));
-        assert!(elapsed.as_millis() < 200, "explain took {}ms", elapsed.as_millis());
+        assert!(
+            elapsed.as_millis() < 200,
+            "explain took {}ms",
+            elapsed.as_millis()
+        );
     }
 }

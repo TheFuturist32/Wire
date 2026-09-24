@@ -9,7 +9,7 @@ use crate::model::{
     T_ACCEPT_REVERT, T_CRED_REVOKE, T_MEMBER_ADD, T_PROCEED, T_PROPOSE, T_PROPOSE_REVERT,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Chain {
     events: Vec<Event>,
     index: HashMap<[u8; 32], usize>,
@@ -20,13 +20,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn new() -> Self {
-        Self {
-            events: Vec::new(),
-            index: HashMap::new(),
-            children: HashMap::new(),
-            forks: Vec::new(),
-            truncated_tip: None,
-        }
+        Self::default()
     }
 
     pub fn len(&self) -> usize {
@@ -72,7 +66,12 @@ impl Chain {
         self.insert(event, true, true)
     }
 
-    pub fn insert(&mut self, event: Event, strict_prev: bool, record_fork: bool) -> Result<[u8; 32]> {
+    pub fn insert(
+        &mut self,
+        event: Event,
+        strict_prev: bool,
+        record_fork: bool,
+    ) -> Result<[u8; 32]> {
         event.verify_sig()?;
         let id = event.id();
         if self.index.contains_key(&id) {
@@ -239,7 +238,11 @@ impl Chain {
             return Err(Error::new("bad log version"));
         }
         let flags = r.u16()?;
-        let truncated_tip = if flags & 1 == 1 { Some(r.arr32()?) } else { None };
+        let truncated_tip = if flags & 1 == 1 {
+            Some(r.arr32()?)
+        } else {
+            None
+        };
         let n = r.u32()? as usize;
         let mut chain = Chain::new();
         chain.truncated_tip = truncated_tip;
@@ -322,9 +325,7 @@ fn is_ancestor(chain: &Chain, maybe: [u8; 32], desc: [u8; 32]) -> bool {
 mod tests {
     use super::*;
     use crate::crypto::{self, RootSecret};
-    use crate::model::{
-        id_body, proposal_body, RuntimeSecret, CAP_ALL, CAP_APPEND, T_ACCEPT,
-    };
+    use crate::model::{id_body, proposal_body, RuntimeSecret, CAP_ALL, CAP_APPEND, T_ACCEPT};
 
     fn signed(
         runtime: &RuntimeSecret,

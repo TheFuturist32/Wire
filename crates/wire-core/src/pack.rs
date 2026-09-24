@@ -27,7 +27,8 @@ pub fn unpack_payload(packed: &[u8]) -> Result<Vec<u8>> {
     }
     match packed[0] {
         RAW => Ok(packed[1..].to_vec()),
-        LZ4 => lz4_flex::decompress_size_prepended(&packed[1..]).map_err(|_| Error::new("lz4 decompress failed")),
+        LZ4 => lz4_flex::decompress_size_prepended(&packed[1..])
+            .map_err(|_| Error::new("lz4 decompress failed")),
         _ => Err(Error::new("bad payload packing")),
     }
 }
@@ -52,7 +53,8 @@ pub fn write_cold(path: &Path, raw: &[u8]) -> Result<()> {
 pub fn read_stored(path: &Path) -> Result<Vec<u8>> {
     let bytes = fs::read(path)?;
     if bytes.starts_with(COLD) {
-        lz4_flex::decompress_size_prepended(&bytes[COLD.len()..]).map_err(|_| Error::new("lz4 decompress failed"))
+        lz4_flex::decompress_size_prepended(&bytes[COLD.len()..])
+            .map_err(|_| Error::new("lz4 decompress failed"))
     } else {
         Ok(bytes)
     }

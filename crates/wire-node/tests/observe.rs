@@ -44,7 +44,10 @@ fn metrics_count_transfers_without_plaintext() {
     assert!(report.contains("ephemeral_transfers 1\n"), "{report}");
     assert!(report.contains("in_flight 0\n"), "{report}");
     let bytes: u64 = field(&report, "ephemeral_bytes").parse().unwrap();
-    assert!(bytes > 0 && bytes < 8192, "repetitive payload should shrink on the wire, got {bytes}");
+    assert!(
+        bytes > 0 && bytes < 8192,
+        "repetitive payload should shrink on the wire, got {bytes}"
+    );
     assert!(!report.contains("WIRE-PIXEL"));
     assert!(!file_contains(&log_file(&a.home, &channel), MARKER));
 }
@@ -101,6 +104,12 @@ fn explain_talk_and_log_are_views() {
     assert!(explained.contains("member_add cred "), "{explained}");
     assert!(explained.contains("propose proposal "), "{explained}");
     let before = fs::read(log_file(&a.home, &channel)).unwrap();
-    let _ = ok(&["explain-log", "--home", a.home.to_str().unwrap(), "--channel", &channel]);
+    let _ = ok(&[
+        "explain-log",
+        "--home",
+        a.home.to_str().unwrap(),
+        "--channel",
+        &channel,
+    ]);
     assert_eq!(fs::read(log_file(&a.home, &channel)).unwrap(), before);
 }

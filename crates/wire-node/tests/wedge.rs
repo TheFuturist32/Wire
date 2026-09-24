@@ -2,7 +2,10 @@ mod common;
 
 use std::fs;
 
-use common::{field, file_contains, files_under, log_file, node, payload, plugin_call, plugin_ok, Plugin, Relay, Tmp, MARKER};
+use common::{
+    field, file_contains, files_under, log_file, node, payload, plugin_call, plugin_ok, Plugin,
+    Relay, Tmp, MARKER,
+};
 use wire_core::codec::parse_id;
 
 #[test]
@@ -15,7 +18,11 @@ fn serve_creates_vault_once() {
     drop(first);
     let second = Plugin::start(tmp.path(), "person", &relay.addr, None);
     assert_eq!(second.principal, principal);
-    let enrolled = plugin_ok(&second.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
+    let enrolled = plugin_ok(
+        &second.addr,
+        &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
     let root = fs::read(vault.join("root.bin")).unwrap();
     let secret = &root[6..38];
     assert!(!enrolled.text.as_bytes().windows(32).any(|w| w == secret));
@@ -27,15 +34,34 @@ fn two_names_one_principal() {
     let tmp = Tmp::new();
     let relay = Relay::start(&tmp.path().join("relay"));
     let plugin = Plugin::start(tmp.path(), "person", &relay.addr, None);
-    let buyer = plugin_ok(&plugin.addr, &["enroll", "--name", "buyer", "--ttl", "1h", "--caps", "all"], &[]);
-    let other = plugin_ok(
+    let buyer = plugin_ok(
         &plugin.addr,
-        &["enroll", "--name", "seller-agent", "--ttl", "1h", "--caps", "append_frame"],
+        &["enroll", "--name", "buyer", "--ttl", "1h", "--caps", "all"],
         &[],
     );
-    assert_eq!(field(&buyer.text, "principal"), field(&other.text, "principal"));
+    let other = plugin_ok(
+        &plugin.addr,
+        &[
+            "enroll",
+            "--name",
+            "seller-agent",
+            "--ttl",
+            "1h",
+            "--caps",
+            "append_frame",
+        ],
+        &[],
+    );
+    assert_eq!(
+        field(&buyer.text, "principal"),
+        field(&other.text, "principal")
+    );
     assert_ne!(field(&buyer.text, "cred"), field(&other.text, "cred"));
-    let again = plugin_ok(&plugin.addr, &["enroll", "--name", "buyer", "--ttl", "1h", "--caps", "all"], &[]);
+    let again = plugin_ok(
+        &plugin.addr,
+        &["enroll", "--name", "buyer", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
     assert_eq!(field(&buyer.text, "cred"), field(&again.text, "cred"));
 }
 
@@ -45,41 +71,81 @@ fn wedge_buyer_seller() {
     let relay = Relay::start(&tmp.path().join("relay"));
     let seller = Plugin::start(tmp.path(), "seller", &relay.addr, None);
     let buyer = Plugin::start(tmp.path(), "buyer", &relay.addr, None);
-    plugin_ok(&seller.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
-    plugin_ok(&buyer.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
+    plugin_ok(
+        &seller.addr,
+        &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
+    plugin_ok(
+        &buyer.addr,
+        &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
     let invited = plugin_ok(&seller.addr, &["invite", "mint", "--name", "desk"], &[]);
     let channel = field(&invited.text, "channel");
-    plugin_ok(&buyer.addr, &["invite", "accept", "--name", "desk"], &invited.blobs);
+    plugin_ok(
+        &buyer.addr,
+        &["invite", "accept", "--name", "desk"],
+        &invited.blobs,
+    );
     plugin_ok(&seller.addr, &["poll", "--name", "desk"], &[]);
 
     let offer = payload(4096);
     plugin_ok(
         &buyer.addr,
         &["send-frame", "--name", "desk", "--channel", &channel],
-        &[offer.clone()],
+        std::slice::from_ref(&offer),
     );
     let seen = plugin_ok(&seller.addr, &["poll", "--name", "desk"], &[]);
-    assert!(seen.blobs.iter().any(|b| b.windows(MARKER.len()).any(|w| w == MARKER)));
+    assert!(seen
+        .blobs
+        .iter()
+        .any(|b| b.windows(MARKER.len()).any(|w| w == MARKER)));
     assert!(!file_contains(&log_file(&buyer.home, &channel), MARKER));
     assert!(!file_contains(&log_file(&seller.home, &channel), MARKER));
 
     let terms = b"agreed-price-10".to_vec();
     let proposed = plugin_ok(
         &buyer.addr,
-        &["receipt", "propose", "--name", "desk", "--channel", &channel],
-        &[terms.clone()],
+        &[
+            "receipt",
+            "propose",
+            "--name",
+            "desk",
+            "--channel",
+            &channel,
+        ],
+        std::slice::from_ref(&terms),
     );
     let proposal = field(&proposed.text, "proposal");
     plugin_ok(&seller.addr, &["poll", "--name", "desk"], &[]);
     plugin_ok(
         &seller.addr,
-        &["receipt", "accept", "--name", "desk", "--channel", &channel, "--proposal", &proposal],
+        &[
+            "receipt",
+            "accept",
+            "--name",
+            "desk",
+            "--channel",
+            &channel,
+            "--proposal",
+            &proposal,
+        ],
         &[],
     );
     plugin_ok(&buyer.addr, &["poll", "--name", "desk"], &[]);
     plugin_ok(
         &buyer.addr,
-        &["receipt", "proceed", "--name", "desk", "--channel", &channel, "--proposal", &proposal],
+        &[
+            "receipt",
+            "proceed",
+            "--name",
+            "desk",
+            "--channel",
+            &channel,
+            "--proposal",
+            &proposal,
+        ],
         &[],
     );
     plugin_ok(&seller.addr, &["poll", "--name", "desk"], &[]);
@@ -88,17 +154,29 @@ fn wedge_buyer_seller() {
     plugin_ok(
         &seller.addr,
         &["share-identity", "--name", "desk", "--channel", &channel],
-        &[secret.clone()],
+        std::slice::from_ref(&secret),
     );
     plugin_ok(&buyer.addr, &["poll", "--name", "desk"], &[]);
-    let revealed = plugin_ok(&buyer.addr, &["show-share", "--name", "desk", "--channel", &channel], &[]);
+    let revealed = plugin_ok(
+        &buyer.addr,
+        &["show-share", "--name", "desk", "--channel", &channel],
+        &[],
+    );
     assert_eq!(revealed.blobs[0], secret);
     assert!(!file_contains(&log_file(&buyer.home, &channel), &secret));
     assert!(!file_contains(&log_file(&seller.home, &channel), &secret));
 
     let exported = plugin_ok(
         &buyer.addr,
-        &["export-receipt", "--name", "desk", "--channel", &channel, "--proposal", &proposal],
+        &[
+            "export-receipt",
+            "--name",
+            "desk",
+            "--channel",
+            &channel,
+            "--proposal",
+            &proposal,
+        ],
         &[],
     );
     let bundle = tmp.path().join("receipt.bin");
@@ -112,7 +190,11 @@ fn wedge_buyer_seller() {
         "--content-file",
         terms_path.to_str().unwrap(),
     ]);
-    assert!(verified.status.success(), "{}", String::from_utf8_lossy(&verified.stderr));
+    assert!(
+        verified.status.success(),
+        "{}",
+        String::from_utf8_lossy(&verified.stderr)
+    );
 
     plugin_ok(
         &buyer.addr,
@@ -132,7 +214,16 @@ fn wedge_buyer_seller() {
     for addr in [&buyer.addr, &seller.addr] {
         let status = plugin_ok(
             addr,
-            &["receipt", "status", "--name", "desk", "--channel", &channel, "--proposal", &proposal],
+            &[
+                "receipt",
+                "status",
+                "--name",
+                "desk",
+                "--channel",
+                &channel,
+                "--proposal",
+                &proposal,
+            ],
             &[],
         );
         assert!(status.text.contains("receipt stuck"), "{}", status.text);
@@ -144,14 +235,30 @@ fn safeguard_confirm_and_size() {
     let tmp = Tmp::new();
     let relay = Relay::start(&tmp.path().join("relay"));
     let policy = tmp.path().join("policy.txt");
-    fs::write(&policy, "max_frame_bytes 32\nconfirm share-identity\nconfirm receipt-proceed\n").unwrap();
+    fs::write(
+        &policy,
+        "max_frame_bytes 32\nconfirm share-identity\nconfirm receipt-proceed\n",
+    )
+    .unwrap();
     let seller = Plugin::start(tmp.path(), "seller", &relay.addr, None);
     let buyer = Plugin::start(tmp.path(), "buyer", &relay.addr, Some(&policy));
-    plugin_ok(&seller.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
-    plugin_ok(&buyer.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
+    plugin_ok(
+        &seller.addr,
+        &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
+    plugin_ok(
+        &buyer.addr,
+        &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+        &[],
+    );
     let invited = plugin_ok(&seller.addr, &["invite", "mint", "--name", "desk"], &[]);
     let channel = field(&invited.text, "channel");
-    plugin_ok(&buyer.addr, &["invite", "accept", "--name", "desk"], &invited.blobs);
+    plugin_ok(
+        &buyer.addr,
+        &["invite", "accept", "--name", "desk"],
+        &invited.blobs,
+    );
     plugin_ok(&seller.addr, &["poll", "--name", "desk"], &[]);
 
     let too_big = plugin_call(
@@ -171,16 +278,32 @@ fn safeguard_confirm_and_size() {
     let denied = plugin_call(
         &buyer.addr,
         &["share-identity", "--name", "desk", "--channel", &channel],
-        &[secret.clone()],
+        std::slice::from_ref(&secret),
     );
-    assert!(!denied.ok && denied.text.contains("confirm required"), "{}", denied.text);
+    assert!(
+        !denied.ok && denied.text.contains("confirm required"),
+        "{}",
+        denied.text
+    );
     fs::write(buyer.vault.join("confirm.token"), "host-only-token").unwrap();
     let guessed = plugin_call(
         &buyer.addr,
-        &["share-identity", "--name", "desk", "--channel", &channel, "--confirm", "guess"],
-        &[secret.clone()],
+        &[
+            "share-identity",
+            "--name",
+            "desk",
+            "--channel",
+            &channel,
+            "--confirm",
+            "guess",
+        ],
+        std::slice::from_ref(&secret),
     );
-    assert!(!guessed.ok && guessed.text.contains("confirm rejected"), "{}", guessed.text);
+    assert!(
+        !guessed.ok && guessed.text.contains("confirm rejected"),
+        "{}",
+        guessed.text
+    );
     plugin_ok(
         &buyer.addr,
         &[
@@ -203,7 +326,11 @@ fn plugin_many_channels() {
     let mut nodes = Vec::new();
     for i in 0..4 {
         let plugin = Plugin::start(tmp.path(), &format!("p{i}"), &relay.addr, None);
-        plugin_ok(&plugin.addr, &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"], &[]);
+        plugin_ok(
+            &plugin.addr,
+            &["enroll", "--name", "desk", "--ttl", "1h", "--caps", "all"],
+            &[],
+        );
         nodes.push(plugin);
     }
     let mut channels = Vec::new();
@@ -213,7 +340,11 @@ fn plugin_many_channels() {
             let b = (i + 1 + k) % 4;
             let invited = plugin_ok(&nodes[a].addr, &["invite", "mint", "--name", "desk"], &[]);
             let channel = field(&invited.text, "channel");
-            plugin_ok(&nodes[b].addr, &["invite", "accept", "--name", "desk"], &invited.blobs);
+            plugin_ok(
+                &nodes[b].addr,
+                &["invite", "accept", "--name", "desk"],
+                &invited.blobs,
+            );
             plugin_ok(&nodes[a].addr, &["poll", "--name", "desk"], &[]);
             channels.push((a, b, channel));
         }
@@ -224,7 +355,7 @@ fn plugin_many_channels() {
         plugin_ok(
             &nodes[*_a].addr,
             &["send-frame", "--name", "desk", "--channel", channel],
-            &[blob.clone()],
+            std::slice::from_ref(&blob),
         );
     }
     let mut spool = Vec::new();
@@ -246,25 +377,51 @@ fn plugin_many_channels() {
         let proposed = plugin_ok(
             &nodes[*a].addr,
             &["receipt", "propose", "--name", "desk", "--channel", channel],
-            &[terms.clone()],
+            std::slice::from_ref(&terms),
         );
         let proposal = field(&proposed.text, "proposal");
         plugin_ok(&nodes[*b].addr, &["poll", "--name", "desk"], &[]);
         plugin_ok(
             &nodes[*b].addr,
-            &["receipt", "accept", "--name", "desk", "--channel", channel, "--proposal", &proposal],
+            &[
+                "receipt",
+                "accept",
+                "--name",
+                "desk",
+                "--channel",
+                channel,
+                "--proposal",
+                &proposal,
+            ],
             &[],
         );
         plugin_ok(&nodes[*a].addr, &["poll", "--name", "desk"], &[]);
         plugin_ok(
             &nodes[*a].addr,
-            &["receipt", "proceed", "--name", "desk", "--channel", channel, "--proposal", &proposal],
+            &[
+                "receipt",
+                "proceed",
+                "--name",
+                "desk",
+                "--channel",
+                channel,
+                "--proposal",
+                &proposal,
+            ],
             &[],
         );
         plugin_ok(&nodes[*b].addr, &["poll", "--name", "desk"], &[]);
         let exported = plugin_ok(
             &nodes[*a].addr,
-            &["export-receipt", "--name", "desk", "--channel", channel, "--proposal", &proposal],
+            &[
+                "export-receipt",
+                "--name",
+                "desk",
+                "--channel",
+                channel,
+                "--proposal",
+                &proposal,
+            ],
             &[],
         );
         let bundle = tmp.path().join(format!("b{n}.bin"));
@@ -278,7 +435,11 @@ fn plugin_many_channels() {
             "--content-file",
             content.to_str().unwrap(),
         ]);
-        assert!(verified.status.success(), "{}", String::from_utf8_lossy(&verified.stderr));
+        assert!(
+            verified.status.success(),
+            "{}",
+            String::from_utf8_lossy(&verified.stderr)
+        );
         ids.push(parse_id(channel).unwrap());
     }
     let mut total = 0u64;

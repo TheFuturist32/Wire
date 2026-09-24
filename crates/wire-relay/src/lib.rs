@@ -141,7 +141,14 @@ fn push(state: &mut State, req: &[u8]) -> Vec<u8> {
     }
     state.pending.entry(recipient).or_default().push((
         env_id,
-        Item { envelope, sender, arrival_ms, suite, kind, channel },
+        Item {
+            envelope,
+            sender,
+            arrival_ms,
+            suite,
+            kind,
+            channel,
+        },
     ));
     vec![ST_OK]
 }
@@ -152,7 +159,11 @@ fn pull(state: &State, req: &[u8]) -> Vec<u8> {
     }
     let mut recipient = [0u8; 32];
     recipient.copy_from_slice(&req[1..33]);
-    let items = state.pending.get(&recipient).map(Vec::as_slice).unwrap_or(&[]);
+    let items = state
+        .pending
+        .get(&recipient)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
     let mut resp = Vec::new();
     resp.push(ST_OK);
     resp.extend_from_slice(&(items.len() as u32).to_be_bytes());
@@ -174,7 +185,14 @@ fn ack(state: &mut State, req: &[u8]) -> Vec<u8> {
     env_id.copy_from_slice(&req[33..65]);
     let found = state.pending.get(&recipient).and_then(|queue| {
         queue.iter().find(|(id, _)| id == &env_id).map(|(_, item)| {
-            (item.sender, item.arrival_ms, item.suite, item.kind, item.channel, item.envelope.len() as u32)
+            (
+                item.sender,
+                item.arrival_ms,
+                item.suite,
+                item.kind,
+                item.channel,
+                item.envelope.len() as u32,
+            )
         })
     });
     if let Some(queue) = state.pending.get_mut(&recipient) {
@@ -236,7 +254,11 @@ fn open_metrics(path: Option<&Path>) -> io::Result<Option<BufWriter<fs::File>>> 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let mut file = OpenOptions::new().create(true).append(true).read(true).open(path)?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .read(true)
+        .open(path)?;
     if file.metadata()?.len() == 0 {
         file.write_all(metrics::header().as_bytes())?;
     }
