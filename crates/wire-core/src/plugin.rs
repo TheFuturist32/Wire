@@ -67,7 +67,11 @@ pub fn decode_reply(bytes: &[u8]) -> Result<Reply> {
         blobs.push(r.lp()?.to_vec());
     }
     r.finish()?;
-    Ok(Reply { ok: status == 0, text, blobs })
+    Ok(Reply {
+        ok: status == 0,
+        text,
+        blobs,
+    })
 }
 
 pub fn call(addr: &str, args: &[String], blobs: &[Vec<u8>]) -> Result<Reply> {

@@ -283,7 +283,7 @@ All must pass in `cargo test --workspace` from this repo. End-to-end tests spawn
 
 ## 12. Security / engineering checklist for Build
 
-- [ ] Root key file ACL limited to the current Windows user; secrets never printed
+- [x] Root key file is limited to the current user (Windows ACL, Unix mode 0600); secrets never printed
 - [ ] Relay spool header is arrival time, sender cred id, recipient cred id, and ciphertext. No plaintext payload.
 - [ ] `forbid(unsafe_code)` on the crates
 - [ ] Truncation and flipped-byte tests on the codec and the log

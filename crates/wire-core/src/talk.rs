@@ -14,10 +14,23 @@ const BLOB: u8 = VER | 5;
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Talk {
     Say(String),
-    Offer { minor: u32, currency: u16, terms: [u8; 32] },
-    Counter { minor: u32, currency: u16, terms: [u8; 32] },
-    Agree { terms: [u8; 32] },
-    BlobRef { size: u32, hash: [u8; 32] },
+    Offer {
+        minor: u32,
+        currency: u16,
+        terms: [u8; 32],
+    },
+    Counter {
+        minor: u32,
+        currency: u16,
+        terms: [u8; 32],
+    },
+    Agree {
+        terms: [u8; 32],
+    },
+    BlobRef {
+        size: u32,
+        hash: [u8; 32],
+    },
 }
 
 impl Talk {
@@ -31,8 +44,16 @@ impl Talk {
                 w.u8(n as u8);
                 w.bytes(&bytes[..n]);
             }
-            Talk::Offer { minor, currency, terms } => write_money(&mut w, OFFER, *minor, *currency, terms),
-            Talk::Counter { minor, currency, terms } => write_money(&mut w, COUNTER, *minor, *currency, terms),
+            Talk::Offer {
+                minor,
+                currency,
+                terms,
+            } => write_money(&mut w, OFFER, *minor, *currency, terms),
+            Talk::Counter {
+                minor,
+                currency,
+                terms,
+            } => write_money(&mut w, COUNTER, *minor, *currency, terms),
             Talk::Agree { terms } => {
                 w.u8(AGREE);
                 w.arr32(terms);
@@ -52,7 +73,8 @@ impl Talk {
         let talk = match tag {
             SAY => {
                 let n = r.u8()? as usize;
-                let text = std::str::from_utf8(r.take(n)?).map_err(|_| Error::new("talk say utf8"))?;
+                let text =
+                    std::str::from_utf8(r.take(n)?).map_err(|_| Error::new("talk say utf8"))?;
                 Talk::Say(text.to_string())
             }
             OFFER | COUNTER => {
@@ -60,13 +82,24 @@ impl Talk {
                 let currency = r.u16()?;
                 let terms = r.arr32()?;
                 if tag == OFFER {
-                    Talk::Offer { minor, currency, terms }
+                    Talk::Offer {
+                        minor,
+                        currency,
+                        terms,
+                    }
                 } else {
-                    Talk::Counter { minor, currency, terms }
+                    Talk::Counter {
+                        minor,
+                        currency,
+                        terms,
+                    }
                 }
             }
             AGREE => Talk::Agree { terms: r.arr32()? },
-            BLOB => Talk::BlobRef { size: r.u32()?, hash: r.arr32()? },
+            BLOB => Talk::BlobRef {
+                size: r.u32()?,
+                hash: r.arr32()?,
+            },
             _ => return Err(Error::new("unknown talk tag")),
         };
         r.finish()?;
@@ -85,11 +118,27 @@ fn write_money(w: &mut Writer, tag: u8, minor: u32, currency: u16, terms: &[u8; 
 pub fn to_text(talk: &Talk) -> String {
     match talk {
         Talk::Say(text) => format!("say {text}"),
-        Talk::Offer { minor, currency, terms } => {
-            format!("offer {} terms {}", money(*minor, *currency), hex_hash(terms))
+        Talk::Offer {
+            minor,
+            currency,
+            terms,
+        } => {
+            format!(
+                "offer {} terms {}",
+                money(*minor, *currency),
+                hex_hash(terms)
+            )
         }
-        Talk::Counter { minor, currency, terms } => {
-            format!("counter {} terms {}", money(*minor, *currency), hex_hash(terms))
+        Talk::Counter {
+            minor,
+            currency,
+            terms,
+        } => {
+            format!(
+                "counter {} terms {}",
+                money(*minor, *currency),
+                hex_hash(terms)
+            )
         }
         Talk::Agree { terms } => format!("agree terms {}", hex_hash(terms)),
         Talk::BlobRef { size, hash } => format!("blob {size} bytes {}", hex_hash(hash)),
@@ -132,7 +181,12 @@ mod tests {
         let say = Talk::Say("hi".into()).encode();
         assert_eq!(say, vec![0x11, 2, b'h', b'i']);
         let terms = hash_bytes(b"net-30");
-        let offer = Talk::Offer { minor: 1000, currency: 840, terms }.encode();
+        let offer = Talk::Offer {
+            minor: 1000,
+            currency: 840,
+            terms,
+        }
+        .encode();
         assert_eq!(offer.len(), 39);
         assert!(!offer.windows(3).any(|w| w == b"USD"));
         assert!(!offer.windows(4).any(|w| w == b"10.00"));

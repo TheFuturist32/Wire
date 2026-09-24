@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::Command;
 
 use crate::chain::Chain;
@@ -8,8 +9,8 @@ use crate::crypto::{self, RootSecret, KIND_EPHEMERAL, KIND_LEDGER, SUITE_CLASSIC
 use crate::error::{Error, Result};
 use crate::model::{
     self, member_add_body, parse_id_body, parse_member_add, parse_proposal, sign_invite, Bundle,
-    Credential, Event, Invite, RuntimeSecret, CAP_APPEND, T_ACCEPT, T_ACCEPT_REVERT,
-    T_CRED_REVOKE, T_MEMBER_ADD, T_PROCEED, T_PROPOSE, T_PROPOSE_REVERT, T_SHARE,
+    Credential, Event, Invite, RuntimeSecret, CAP_APPEND, T_ACCEPT, T_ACCEPT_REVERT, T_CRED_REVOKE,
+    T_MEMBER_ADD, T_PROCEED, T_PROPOSE, T_PROPOSE_REVERT, T_SHARE,
 };
 use crate::net;
 
@@ -34,14 +35,27 @@ pub fn vault_init(path: &Path) -> Result<VaultOut> {
     fs::write(&root_path, root_bytes(&root))?;
     restrict_user(&root_path)?;
     let handle = to_hex(&crypto::random32()[..16]);
-    write_handles(path, &Handles { gen: 1, current: handle.clone(), retired: Vec::new() })?;
-    Ok(VaultOut { principal: root.principal_id(), handle })
+    write_handles(
+        path,
+        &Handles {
+            gen: 1,
+            current: handle.clone(),
+            retired: Vec::new(),
+        },
+    )?;
+    Ok(VaultOut {
+        principal: root.principal_id(),
+        handle,
+    })
 }
 
 pub fn vault_info(path: &Path) -> Result<VaultOut> {
     let root = load_root(path)?;
     let handles = read_handles(path)?;
-    Ok(VaultOut { principal: root.principal_id(), handle: handles.current })
+    Ok(VaultOut {
+        principal: root.principal_id(),
+        handle: handles.current,
+    })
 }
 
 pub fn enroll(vault: &Path, ttl_secs: u64, caps: u32) -> Result<RuntimeSecret> {
@@ -65,10 +79,18 @@ pub fn rotate_handle(vault: &Path) -> Result<VaultOut> {
     handles.gen = handles.gen.saturating_add(1);
     handles.current = to_hex(&crypto::random32()[..16]);
     write_handles(vault, &handles)?;
-    Ok(VaultOut { principal: root.principal_id(), handle: handles.current })
+    Ok(VaultOut {
+        principal: root.principal_id(),
+        handle: handles.current,
+    })
 }
 
-pub fn invite_mint(vault: &Path, runtime_path: &Path, home: &Path, handle: &str) -> Result<([u8; 32], Vec<u8>)> {
+pub fn invite_mint(
+    vault: &Path,
+    runtime_path: &Path,
+    home: &Path,
+    handle: &str,
+) -> Result<([u8; 32], Vec<u8>)> {
     let handles = read_handles(vault)?;
     if handle != handles.current {
         return Err(Error::new("stale handle"));
@@ -104,7 +126,12 @@ pub fn invite_mint(vault: &Path, runtime_path: &Path, home: &Path, handle: &str)
     Ok((channel, invite.encode()))
 }
 
-pub fn invite_accept(runtime_path: &Path, home: &Path, invite_bytes: &[u8], relay: &str) -> Result<[u8; 32]> {
+pub fn invite_accept(
+    runtime_path: &Path,
+    home: &Path,
+    invite_bytes: &[u8],
+    relay: &str,
+) -> Result<[u8; 32]> {
     let invite = Invite::decode(invite_bytes)?;
     if crypto::now_unix() >= invite.expires {
         return Err(Error::new("invite expired"));
@@ -116,20 +143,47 @@ pub fn invite_accept(runtime_path: &Path, home: &Path, invite_bytes: &[u8], rela
     let (inviter, _caps, _tok, _gen) = parse_member_add(&invite.genesis.body)?;
     let mut chain = Chain::new();
     chain.append(invite.genesis.clone())?;
-    let body = member_add_body(&runtime.cred, runtime.cred.caps, &invite.token, invite.handle_gen);
-    let join = sign_local(&runtime, invite.channel_id, invite.genesis.id(), T_MEMBER_ADD, body)?;
+    let body = member_add_body(
+        &runtime.cred,
+        runtime.cred.caps,
+        &invite.token,
+        invite.handle_gen,
+    );
+    let join = sign_local(
+        &runtime,
+        invite.channel_id,
+        invite.genesis.id(),
+        T_MEMBER_ADD,
+        body,
+    )?;
     chain.screen(&join, crypto::now_unix())?;
     chain.append(join.clone())?;
     chain.save(&log_path(home, &invite.channel_id))?;
-    seal_push(relay, &runtime, &inviter, &invite.channel_id, &join.encode(), KIND_LEDGER)?;
+    seal_push(
+        relay,
+        &runtime,
+        &inviter,
+        &invite.channel_id,
+        &join.encode(),
+        KIND_LEDGER,
+    )?;
     Ok(invite.channel_id)
 }
 
-pub fn send_frame(runtime_path: &Path, home: &Path, channel: &[u8; 32], payload: &[u8], relay: &str, retain: Option<&Path>) -> Result<()> {
+pub fn send_frame(
+    runtime_path: &Path,
+    home: &Path,
+    channel: &[u8; 32],
+    payload: &[u8],
+    relay: &str,
+    retain: Option<&Path>,
+) -> Result<()> {
     let runtime = load_runtime(runtime_path)?;
     let chain = Chain::load(&log_path(home, channel))?;
     let members = chain.members()?;
-    let (_me, caps) = members.get(&runtime.cred_id()).ok_or_else(|| Error::new("not a member"))?;
+    let (_me, caps) = members
+        .get(&runtime.cred_id())
+        .ok_or_else(|| Error::new("not a member"))?;
     if caps & CAP_APPEND == 0 {
         return Err(Error::new("capability denied"));
     }
@@ -138,7 +192,14 @@ pub fn send_frame(runtime_path: &Path, home: &Path, channel: &[u8; 32], payload:
         if id == &runtime.cred_id() {
             continue;
         }
-        seal_push(relay, &runtime, cred, channel, &crate::pack::pack_payload(payload), KIND_EPHEMERAL)?;
+        seal_push(
+            relay,
+            &runtime,
+            cred,
+            channel,
+            &crate::pack::pack_payload(payload),
+            KIND_EPHEMERAL,
+        )?;
     }
     if let Some(dir) = retain {
         let file = dir.join(format!("{}.bin", to_hex(&crypto::random32())));
@@ -157,10 +218,19 @@ pub struct PollOut {
     pub payloads: Vec<Vec<u8>>,
 }
 
-pub fn poll(runtime_path: &Path, home: &Path, relay: &str, inbox: Option<&Path>) -> Result<PollOut> {
+pub fn poll(
+    runtime_path: &Path,
+    home: &Path,
+    relay: &str,
+    inbox: Option<&Path>,
+) -> Result<PollOut> {
     let runtime = load_runtime(runtime_path)?;
     let batch = net::pull(relay, &runtime.cred_id())?;
-    let mut out = PollOut { ephemeral: 0, ledger: 0, payloads: Vec::new() };
+    let mut out = PollOut {
+        ephemeral: 0,
+        ledger: 0,
+        payloads: Vec::new(),
+    };
     let mut first_err: Option<Error> = None;
     for (env_id, bytes) in batch {
         match accept_envelope(home, &runtime, &bytes, inbox) {
@@ -185,7 +255,15 @@ pub fn poll(runtime_path: &Path, home: &Path, relay: &str, inbox: Option<&Path>)
     Ok(out)
 }
 
-pub fn receipt(runtime_path: &Path, home: &Path, channel: &[u8; 32], action: &str, proposal: Option<[u8; 32]>, content: Option<&[u8]>, relay: &str) -> Result<([u8; 32], [u8; 32])> {
+pub fn receipt(
+    runtime_path: &Path,
+    home: &Path,
+    channel: &[u8; 32],
+    action: &str,
+    proposal: Option<[u8; 32]>,
+    content: Option<&[u8]>,
+    relay: &str,
+) -> Result<([u8; 32], [u8; 32])> {
     let runtime = load_runtime(runtime_path)?;
     let typ = match action {
         "propose" => T_PROPOSE,
@@ -210,15 +288,24 @@ pub fn receipt(runtime_path: &Path, home: &Path, channel: &[u8; 32], action: &st
     } else {
         [0u8; 32]
     };
-    if typ != T_PROPOSE && !chain.events().iter().any(|e| e.typ == T_PROPOSE && parse_proposal(&e.body).ok().map(|p| p.0) == Some(proposal)) {
+    if typ != T_PROPOSE
+        && !chain.events().iter().any(|e| {
+            e.typ == T_PROPOSE && parse_proposal(&e.body).ok().map(|p| p.0) == Some(proposal)
+        })
+    {
         return Err(Error::new("unknown proposal"));
     }
     if typ == T_PROCEED {
-        let accept_ok = chain.events().iter().any(|e| e.typ == T_ACCEPT && parse_id_body(&e.body).ok() == Some(proposal));
+        let accept_ok = chain
+            .events()
+            .iter()
+            .any(|e| e.typ == T_ACCEPT && parse_id_body(&e.body).ok() == Some(proposal));
         if !accept_ok {
             return Err(Error::new("proceed without accept"));
         }
-        let proposer = chain.events().iter().find(|e| e.typ == T_PROPOSE && parse_proposal(&e.body).ok().map(|p| p.0) == Some(proposal));
+        let proposer = chain.events().iter().find(|e| {
+            e.typ == T_PROPOSE && parse_proposal(&e.body).ok().map(|p| p.0) == Some(proposal)
+        });
         if proposer.map(|e| e.signer_cred_id) != Some(runtime.cred_id()) {
             return Err(Error::new("proceed must be signed by the proposer"));
         }
@@ -233,16 +320,30 @@ pub fn receipt(runtime_path: &Path, home: &Path, channel: &[u8; 32], action: &st
     chain.screen(&event, crypto::now_unix())?;
     chain.append(event.clone())?;
     chain.save(&log_path(home, channel))?;
-    push_to_others(relay, &runtime, &chain, channel, &event.encode(), KIND_LEDGER)?;
+    push_to_others(
+        relay,
+        &runtime,
+        &chain,
+        channel,
+        &event.encode(),
+        KIND_LEDGER,
+    )?;
     Ok((proposal, content_hash))
 }
 
 pub fn receipt_state(home: &Path, channel: &[u8; 32], proposal: &[u8; 32]) -> Result<&'static str> {
-    let chain = load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
+    let chain =
+        load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
     Ok(state_of(&chain, proposal))
 }
 
-pub fn share_identity(runtime_path: &Path, home: &Path, channel: &[u8; 32], pii: &[u8], relay: &str) -> Result<()> {
+pub fn share_identity(
+    runtime_path: &Path,
+    home: &Path,
+    channel: &[u8; 32],
+    pii: &[u8],
+    relay: &str,
+) -> Result<()> {
     let runtime = load_runtime(runtime_path)?;
     let chain = Chain::load(&log_path(home, channel))?;
     if chain.fork_detected() {
@@ -252,20 +353,37 @@ pub fn share_identity(runtime_path: &Path, home: &Path, channel: &[u8; 32], pii:
     if others.len() != 1 {
         return Err(Error::new("share_identity expects one counterparty"));
     }
-    let sealed = crypto::seal(SUITE_CLASSICAL, KIND_EPHEMERAL, &runtime.agree, &runtime.cred_id(), &others[0].id(), &others[0].x25519_pub, channel, pii)?;
+    let sealed = crypto::seal(
+        SUITE_CLASSICAL,
+        KIND_EPHEMERAL,
+        &runtime.agree,
+        &runtime.cred_id(),
+        &others[0].id(),
+        &others[0].x25519_pub,
+        channel,
+        pii,
+    )?;
     let prev = chain.sole_tip()?;
     let event = sign_local(&runtime, *channel, prev, T_SHARE, sealed)?;
     let mut chain = chain;
     chain.screen(&event, crypto::now_unix())?;
     chain.append(event.clone())?;
     chain.save(&log_path(home, channel))?;
-    push_to_others(relay, &runtime, &chain, channel, &event.encode(), KIND_LEDGER)?;
+    push_to_others(
+        relay,
+        &runtime,
+        &chain,
+        channel,
+        &event.encode(),
+        KIND_LEDGER,
+    )?;
     Ok(())
 }
 
 pub fn show_share(runtime_path: &Path, home: &Path, channel: &[u8; 32]) -> Result<Vec<u8>> {
     let runtime = load_runtime(runtime_path)?;
-    let chain = load_combined(home, channel, true).unwrap_or(Chain::load(&log_path(home, channel))?);
+    let chain =
+        load_combined(home, channel, true).unwrap_or(Chain::load(&log_path(home, channel))?);
     for event in chain.events().iter().rev() {
         if event.typ != T_SHARE {
             continue;
@@ -277,7 +395,14 @@ pub fn show_share(runtime_path: &Path, home: &Path, channel: &[u8; 32]) -> Resul
     Err(Error::new("no share_identity for this runtime"))
 }
 
-pub fn member_add(runtime_path: &Path, home: &Path, channel: &[u8; 32], sub: &RuntimeSecret, caps: u32, relay: &str) -> Result<()> {
+pub fn member_add(
+    runtime_path: &Path,
+    home: &Path,
+    channel: &[u8; 32],
+    sub: &RuntimeSecret,
+    caps: u32,
+    relay: &str,
+) -> Result<()> {
     let runtime = load_runtime(runtime_path)?;
     let mut chain = Chain::load(&log_path(home, channel))?;
     if chain.fork_detected() {
@@ -290,24 +415,57 @@ pub fn member_add(runtime_path: &Path, home: &Path, channel: &[u8; 32], sub: &Ru
     chain.append(event.clone())?;
     chain.save(&log_path(home, channel))?;
     for prior in chain.events() {
-        seal_push(relay, &runtime, &sub.cred, channel, &prior.encode(), KIND_LEDGER)?;
+        seal_push(
+            relay,
+            &runtime,
+            &sub.cred,
+            channel,
+            &prior.encode(),
+            KIND_LEDGER,
+        )?;
     }
-    push_to_others(relay, &runtime, &chain, channel, &event.encode(), KIND_LEDGER)?;
+    push_to_others(
+        relay,
+        &runtime,
+        &chain,
+        channel,
+        &event.encode(),
+        KIND_LEDGER,
+    )?;
     Ok(())
 }
 
-pub fn cred_revoke(runtime_path: &Path, home: &Path, channel: &[u8; 32], cred_id: &[u8; 32], relay: &str) -> Result<()> {
+pub fn cred_revoke(
+    runtime_path: &Path,
+    home: &Path,
+    channel: &[u8; 32],
+    cred_id: &[u8; 32],
+    relay: &str,
+) -> Result<()> {
     let runtime = load_runtime(runtime_path)?;
     let mut chain = Chain::load(&log_path(home, channel))?;
     if chain.fork_detected() {
         return Err(Error::new("fork: refusing new local event"));
     }
     let prev = chain.sole_tip()?;
-    let event = sign_local(&runtime, *channel, prev, T_CRED_REVOKE, model::id_body(cred_id))?;
+    let event = sign_local(
+        &runtime,
+        *channel,
+        prev,
+        T_CRED_REVOKE,
+        model::id_body(cred_id),
+    )?;
     chain.screen(&event, crypto::now_unix())?;
     chain.append(event.clone())?;
     chain.save(&log_path(home, channel))?;
-    push_to_others(relay, &runtime, &chain, channel, &event.encode(), KIND_LEDGER)?;
+    push_to_others(
+        relay,
+        &runtime,
+        &chain,
+        channel,
+        &event.encode(),
+        KIND_LEDGER,
+    )?;
     Ok(())
 }
 
@@ -335,22 +493,18 @@ pub fn export_receipt(home: &Path, channel: &[u8; 32], proposal: &[u8; 32]) -> R
     let mut accept = None;
     let mut proceed = None;
     for event in chain.events() {
+        let hit = match event.typ {
+            T_PROPOSE => parse_proposal(&event.body)?.0 == *proposal,
+            T_ACCEPT | T_PROCEED => parse_id_body(&event.body)? == *proposal,
+            _ => false,
+        };
+        if !hit {
+            continue;
+        }
         match event.typ {
-            T_PROPOSE => {
-                if parse_proposal(&event.body)?.0 == *proposal {
-                    propose = Some(event.clone());
-                }
-            }
-            T_ACCEPT => {
-                if parse_id_body(&event.body)? == *proposal {
-                    accept = Some(event.clone());
-                }
-            }
-            T_PROCEED => {
-                if parse_id_body(&event.body)? == *proposal {
-                    proceed = Some(event.clone());
-                }
-            }
+            T_PROPOSE => propose = Some(event.clone()),
+            T_ACCEPT => accept = Some(event.clone()),
+            T_PROCEED => proceed = Some(event.clone()),
             _ => {}
         }
     }
@@ -360,12 +514,18 @@ pub fn export_receipt(home: &Path, channel: &[u8; 32], proposal: &[u8; 32]) -> R
     let members = chain.members()?;
     let mut creds = Vec::new();
     for id in [propose.signer_cred_id, accept.signer_cred_id] {
-        let (cred, _) = members.get(&id).ok_or_else(|| Error::new("signer cred missing from log"))?;
+        let (cred, _) = members
+            .get(&id)
+            .ok_or_else(|| Error::new("signer cred missing from log"))?;
         if !creds.iter().any(|c: &Credential| c.id() == id) {
             creds.push(cred.clone());
         }
     }
-    Ok(Bundle { creds, events: vec![propose, accept, proceed] }.encode())
+    Ok(Bundle {
+        creds,
+        events: vec![propose, accept, proceed],
+    }
+    .encode())
 }
 
 pub fn verify_receipt(bundle: &[u8], content: Option<&[u8]>) -> Result<()> {
@@ -374,12 +534,14 @@ pub fn verify_receipt(bundle: &[u8], content: Option<&[u8]>) -> Result<()> {
 }
 
 pub fn explain_channel(home: &Path, channel: &[u8; 32]) -> Result<String> {
-    let chain = load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
+    let chain =
+        load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
     Ok(crate::explain::events(chain.events()))
 }
 
 pub fn export_merge(home: &Path, channel: &[u8; 32], include_pii: bool) -> Result<String> {
-    let chain = load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
+    let chain =
+        load_combined(home, channel, true).or_else(|_| Chain::load(&log_path(home, channel)))?;
     let mut out = String::new();
     for event in chain.events() {
         if event.typ == T_SHARE && !include_pii {
@@ -404,13 +566,21 @@ fn state_of(chain: &Chain, proposal: &[u8; 32]) -> &'static str {
     chain.receipt_state(proposal)
 }
 
-fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Option<&Path>) -> Result<Option<Vec<u8>>> {
+fn accept_envelope(
+    home: &Path,
+    runtime: &RuntimeSecret,
+    bytes: &[u8],
+    inbox: Option<&Path>,
+) -> Result<Option<Vec<u8>>> {
     let opened = crypto::open(&runtime.agree, &runtime.cred_id(), bytes)?;
     if opened.kind == KIND_EPHEMERAL {
         let plain = crate::pack::unpack_payload(&opened.plaintext)?;
         if let Some(dir) = inbox {
             fs::create_dir_all(dir)?;
-            fs::write(dir.join(format!("{}.bin", to_hex(&crypto::sha256(&plain)))), &plain)?;
+            fs::write(
+                dir.join(format!("{}.bin", to_hex(&crypto::sha256(&plain)))),
+                &plain,
+            )?;
         }
         return Ok(Some(plain));
     }
@@ -445,7 +615,14 @@ fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Op
     Ok(None)
 }
 
-fn push_to_others(relay: &str, runtime: &RuntimeSecret, chain: &Chain, channel: &[u8; 32], payload: &[u8], kind: u8) -> Result<()> {
+fn push_to_others(
+    relay: &str,
+    runtime: &RuntimeSecret,
+    chain: &Chain,
+    channel: &[u8; 32],
+    payload: &[u8],
+    kind: u8,
+) -> Result<()> {
     for cred in others(chain, &runtime.cred_id())? {
         seal_push(relay, runtime, &cred, channel, payload, kind)?;
     }
@@ -462,13 +639,35 @@ fn others(chain: &Chain, me: &[u8; 32]) -> Result<Vec<Credential>> {
     Ok(out)
 }
 
-fn seal_push(relay: &str, from: &RuntimeSecret, to: &Credential, channel: &[u8; 32], payload: &[u8], kind: u8) -> Result<()> {
-    let env = crypto::seal(SUITE_CLASSICAL, kind, &from.agree, &from.cred_id(), &to.id(), &to.x25519_pub, channel, payload)?;
+fn seal_push(
+    relay: &str,
+    from: &RuntimeSecret,
+    to: &Credential,
+    channel: &[u8; 32],
+    payload: &[u8],
+    kind: u8,
+) -> Result<()> {
+    let env = crypto::seal(
+        SUITE_CLASSICAL,
+        kind,
+        &from.agree,
+        &from.cred_id(),
+        &to.id(),
+        &to.x25519_pub,
+        channel,
+        payload,
+    )?;
     net::push(relay, &from.cred_id(), &to.id(), &crypto::random32(), &env)?;
     Ok(())
 }
 
-fn sign_local(runtime: &RuntimeSecret, channel: [u8; 32], prev: [u8; 32], typ: u16, body: Vec<u8>) -> Result<Event> {
+fn sign_local(
+    runtime: &RuntimeSecret,
+    channel: [u8; 32],
+    prev: [u8; 32],
+    typ: u16,
+    body: Vec<u8>,
+) -> Result<Event> {
     Event {
         suite: SUITE_CLASSICAL,
         channel_id: channel,
@@ -492,7 +691,9 @@ fn load_combined(home: &Path, channel: &[u8; 32], require_link: bool) -> Result<
     }
     let hot = Chain::load(&log_path(home, channel))?;
     for event in hot.events().to_vec() {
-        chain.insert(event, true, true).map_err(|_| Error::new("archive required to verify this receipt"))?;
+        chain
+            .insert(event, true, true)
+            .map_err(|_| Error::new("archive required to verify this receipt"))?;
     }
     let _ = require_link;
     Ok(chain)
@@ -507,11 +708,16 @@ fn log_path(home: &Path, channel: &[u8; 32]) -> PathBuf {
 }
 
 fn archive_path(home: &Path, channel: &[u8; 32]) -> PathBuf {
-    home.join("channels").join(to_hex(channel)).join("archive").join("log.bin")
+    home.join("channels")
+        .join(to_hex(channel))
+        .join("archive")
+        .join("log.bin")
 }
 
 fn token_path(home: &Path, channel: &[u8; 32]) -> PathBuf {
-    home.join("channels").join(to_hex(channel)).join("token.bin")
+    home.join("channels")
+        .join(to_hex(channel))
+        .join("token.bin")
 }
 
 fn type_name(typ: u16) -> &'static str {
@@ -583,10 +789,29 @@ fn read_handles(vault: &Path) -> Result<Handles> {
         retired.push(String::from_utf8(r.lp()?.to_vec()).map_err(|_| Error::new("handle utf8"))?);
     }
     r.finish()?;
-    Ok(Handles { gen, current, retired })
+    Ok(Handles {
+        gen,
+        current,
+        retired,
+    })
 }
 
+#[cfg(not(any(windows, unix)))]
+compile_error!("secret files need a Windows ACL or a Unix mode");
+
 fn restrict_user(path: &Path) -> Result<()> {
+    #[cfg(windows)]
+    {
+        restrict_windows(path)
+    }
+    #[cfg(all(unix, not(windows)))]
+    {
+        restrict_unix(path)
+    }
+}
+
+#[cfg(windows)]
+fn restrict_windows(path: &Path) -> Result<()> {
     let who = Command::new("whoami").output()?;
     if !who.status.success() {
         return Err(Error::new("whoami failed"));
@@ -604,6 +829,15 @@ fn restrict_user(path: &Path) -> Result<()> {
             String::from_utf8_lossy(&out.stderr)
         )));
     }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn restrict_unix(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = fs::metadata(path)?.permissions();
+    perms.set_mode(0o600);
+    fs::set_permissions(path, perms)?;
     Ok(())
 }
 
@@ -633,11 +867,30 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("wire-acl-{}", to_hex(&crypto::random32())));
         let _ = fs::remove_dir_all(&dir);
         vault_init(&dir).unwrap();
-        let out = Command::new("icacls").arg(dir.join("root.bin")).output().unwrap();
+        let out = Command::new("icacls")
+            .arg(dir.join("root.bin"))
+            .output()
+            .unwrap();
         let text = String::from_utf8_lossy(&out.stdout).to_ascii_lowercase();
         assert!(!text.contains("everyone"), "{text}");
         assert!(!text.contains("authenticated users"), "{text}");
         assert!(!text.contains("builtin\\users"), "{text}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn root_mode_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("wire-mode-{}", to_hex(&crypto::random32())));
+        let _ = fs::remove_dir_all(&dir);
+        vault_init(&dir).unwrap();
+        let mode = fs::metadata(dir.join("root.bin"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600, "mode {mode:o}");
         let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -26,7 +26,12 @@ struct Ctx {
     policy: Policy,
 }
 
-pub fn run(vault: &Path, home: &Path, relay: &str, policy_path: Option<&Path>) -> Result<(), Error> {
+pub fn run(
+    vault: &Path,
+    home: &Path,
+    relay: &str,
+    policy_path: Option<&Path>,
+) -> Result<(), Error> {
     fs::create_dir_all(home)?;
     let info = if vault.join("root.bin").exists() {
         ops::vault_info(vault)?
@@ -73,7 +78,11 @@ fn handle_conn(mut sock: TcpStream, ctx: Arc<Mutex<Ctx>>) -> Result<(), Error> {
     Ok(())
 }
 
-fn dispatch(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec<Vec<u8>>), Error> {
+fn dispatch(
+    ctx: &Ctx,
+    args: &[String],
+    blobs: &[Vec<u8>],
+) -> Result<(String, Vec<Vec<u8>>), Error> {
     match args.first().map(String::as_str) {
         Some("enroll") => enroll(ctx, args),
         Some("invite") => invite(ctx, args, blobs),
@@ -110,39 +119,69 @@ fn invite(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec<
         Some("mint") => {
             let name = require_name(args)?;
             let info = ops::vault_info(&ctx.vault)?;
-            let (channel, bytes) = ops::invite_mint(&ctx.vault, &runtime_path(&ctx.home, &name), &ctx.home, &info.handle)?;
+            let (channel, bytes) = ops::invite_mint(
+                &ctx.vault,
+                &runtime_path(&ctx.home, &name),
+                &ctx.home,
+                &info.handle,
+            )?;
             Ok((format!("channel {}\nok\n", to_hex(&channel)), vec![bytes]))
         }
         Some("accept") => {
             let name = require_name(args)?;
-            let invite = blobs.first().ok_or_else(|| Error::new("missing invite blob"))?;
-            let channel = ops::invite_accept(&runtime_path(&ctx.home, &name), &ctx.home, invite, &ctx.relay)?;
+            let invite = blobs
+                .first()
+                .ok_or_else(|| Error::new("missing invite blob"))?;
+            let channel = ops::invite_accept(
+                &runtime_path(&ctx.home, &name),
+                &ctx.home,
+                invite,
+                &ctx.relay,
+            )?;
             Ok((format!("channel {}\nok\n", to_hex(&channel)), Vec::new()))
         }
         _ => Err(Error::new("usage: invite mint|accept")),
     }
 }
 
-fn send_frame(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec<Vec<u8>>), Error> {
+fn send_frame(
+    ctx: &Ctx,
+    args: &[String],
+    blobs: &[Vec<u8>],
+) -> Result<(String, Vec<Vec<u8>>), Error> {
     let name = require_name(args)?;
     let channel = parse_id(&require(args, "channel")?)?;
-    let payload = blobs.first().ok_or_else(|| Error::new("missing payload blob"))?;
+    let payload = blobs
+        .first()
+        .ok_or_else(|| Error::new("missing payload blob"))?;
     if payload.len() > ctx.policy.max_frame_bytes {
         return Err(Error::new("payload exceeds max_frame_bytes"));
     }
-    ops::send_frame(&runtime_path(&ctx.home, &name), &ctx.home, &channel, payload, &ctx.relay, None)?;
+    ops::send_frame(
+        &runtime_path(&ctx.home, &name),
+        &ctx.home,
+        &channel,
+        payload,
+        &ctx.relay,
+        None,
+    )?;
     Ok(("ok\n".into(), Vec::new()))
 }
 
 fn poll(ctx: &Ctx, args: &[String]) -> Result<(String, Vec<Vec<u8>>), Error> {
     let name = require_name(args)?;
     let stats = ops::poll(&runtime_path(&ctx.home, &name), &ctx.home, &ctx.relay, None)?;
-    let text = format!("ephemeral {}\nledger {}\nok\n", stats.ephemeral, stats.ledger);
+    let text = format!(
+        "ephemeral {}\nledger {}\nok\n",
+        stats.ephemeral, stats.ledger
+    );
     Ok((text, stats.payloads))
 }
 
 fn receipt(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec<Vec<u8>>), Error> {
-    let action = args.get(1).ok_or_else(|| Error::new("missing receipt action"))?;
+    let action = args
+        .get(1)
+        .ok_or_else(|| Error::new("missing receipt action"))?;
     let name = require_name(args)?;
     let channel = parse_id(&require(args, "channel")?)?;
     if action == "status" {
@@ -159,9 +198,16 @@ fn receipt(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec
     if let Some(gate) = gate {
         require_confirm(ctx, args, gate)?;
     }
-    let proposal = optional(args, "proposal").map(|s| parse_id(&s)).transpose()?;
+    let proposal = optional(args, "proposal")
+        .map(|s| parse_id(&s))
+        .transpose()?;
     let content = if action == "propose" {
-        Some(blobs.first().ok_or_else(|| Error::new("missing content blob"))?.as_slice())
+        Some(
+            blobs
+                .first()
+                .ok_or_else(|| Error::new("missing content blob"))?
+                .as_slice(),
+        )
     } else {
         None
     };
@@ -174,15 +220,26 @@ fn receipt(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec
         content,
         &ctx.relay,
     )?;
-    Ok((format!("proposal {}\ncontent {}\nok\n", to_hex(&id), to_hex(&hash)), Vec::new()))
+    Ok((
+        format!("proposal {}\ncontent {}\nok\n", to_hex(&id), to_hex(&hash)),
+        Vec::new(),
+    ))
 }
 
 fn share(ctx: &Ctx, args: &[String], blobs: &[Vec<u8>]) -> Result<(String, Vec<Vec<u8>>), Error> {
     let name = require_name(args)?;
     let channel = parse_id(&require(args, "channel")?)?;
-    let pii = blobs.first().ok_or_else(|| Error::new("missing identity blob"))?;
+    let pii = blobs
+        .first()
+        .ok_or_else(|| Error::new("missing identity blob"))?;
     require_confirm(ctx, args, "share-identity")?;
-    ops::share_identity(&runtime_path(&ctx.home, &name), &ctx.home, &channel, pii, &ctx.relay)?;
+    ops::share_identity(
+        &runtime_path(&ctx.home, &name),
+        &ctx.home,
+        &channel,
+        pii,
+        &ctx.relay,
+    )?;
     Ok(("ok\n".into(), Vec::new()))
 }
 
@@ -201,7 +258,9 @@ fn export_receipt(ctx: &Ctx, args: &[String]) -> Result<(String, Vec<Vec<u8>>), 
 }
 
 fn verify(blobs: &[Vec<u8>]) -> Result<(String, Vec<Vec<u8>>), Error> {
-    let bundle = blobs.first().ok_or_else(|| Error::new("missing bundle blob"))?;
+    let bundle = blobs
+        .first()
+        .ok_or_else(|| Error::new("missing bundle blob"))?;
     let content = blobs.get(1).map(Vec::as_slice);
     ops::verify_receipt(bundle, content)?;
     Ok(("ok\n".into(), Vec::new()))
@@ -212,7 +271,14 @@ fn rotate(ctx: &Ctx, args: &[String]) -> Result<(String, Vec<Vec<u8>>), Error> {
         return Err(Error::new("usage: handle rotate"));
     }
     let out = ops::rotate_handle(&ctx.vault)?;
-    Ok((format!("principal {}\nhandle {}\nok\n", to_hex(&out.principal), out.handle), Vec::new()))
+    Ok((
+        format!(
+            "principal {}\nhandle {}\nok\n",
+            to_hex(&out.principal),
+            out.handle
+        ),
+        Vec::new(),
+    ))
 }
 
 fn require_confirm(ctx: &Ctx, args: &[String], gate: &str) -> Result<(), Error> {
@@ -229,7 +295,10 @@ fn require_confirm(ctx: &Ctx, args: &[String], gate: &str) -> Result<(), Error> 
 }
 
 fn load_policy(path: Option<&Path>) -> Result<Policy, Error> {
-    let mut policy = Policy { max_frame_bytes: 4 * 1024 * 1024, confirm: Vec::new() };
+    let mut policy = Policy {
+        max_frame_bytes: 4 * 1024 * 1024,
+        confirm: Vec::new(),
+    };
     let Some(path) = path else {
         return Ok(policy);
     };
@@ -241,16 +310,23 @@ fn load_policy(path: Option<&Path>) -> Result<Policy, Error> {
         }
         let mut parts = line.split_whitespace();
         let key = parts.next().ok_or_else(|| Error::new("bad policy line"))?;
-        let value = parts.next().ok_or_else(|| Error::new(format!("bad policy line {line}")))?;
+        let value = parts
+            .next()
+            .ok_or_else(|| Error::new(format!("bad policy line {line}")))?;
         if parts.next().is_some() {
             return Err(Error::new(format!("bad policy line {line}")));
         }
         match key {
             "max_frame_bytes" => {
-                policy.max_frame_bytes = value.parse().map_err(|_| Error::new("bad max_frame_bytes"))?;
+                policy.max_frame_bytes = value
+                    .parse()
+                    .map_err(|_| Error::new("bad max_frame_bytes"))?;
             }
             "confirm" => match value {
-                "share-identity" | "receipt-proceed" | "receipt-propose-revert" | "receipt-accept" => {
+                "share-identity"
+                | "receipt-proceed"
+                | "receipt-propose-revert"
+                | "receipt-accept" => {
                     policy.confirm.push(value.to_string());
                 }
                 _ => return Err(Error::new(format!("unknown confirm gate {value}"))),
@@ -278,7 +354,9 @@ fn require_name(args: &[String]) -> Result<String, Error> {
     let name = require(args, "name")?;
     if name.is_empty()
         || name.len() > 64
-        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(Error::new("bad runtime name"));
     }

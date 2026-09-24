@@ -3,7 +3,9 @@ mod common;
 use std::fs;
 use std::time::Instant;
 
-use common::{field, file_contains, files_under, join, log_file, ok, party, payload, Relay, Tmp, MARKER};
+use common::{
+    field, file_contains, files_under, join, log_file, ok, party, payload, Relay, Tmp, MARKER,
+};
 use wire_core::codec::parse_id;
 
 #[test]
@@ -165,7 +167,10 @@ fn scale_many_channels() {
         proposals.push(proposal);
     }
 
-    let ids: Vec<[u8; 32]> = channels.iter().map(|(_, _, hex)| parse_id(hex).unwrap()).collect();
+    let ids: Vec<[u8; 32]> = channels
+        .iter()
+        .map(|(_, _, hex)| parse_id(hex).unwrap())
+        .collect();
     let mut total = 0u64;
     let mut logs = 0u32;
     for node in &nodes {
@@ -175,7 +180,12 @@ fn scale_many_channels() {
                 continue;
             }
             let bytes = fs::read(&path).unwrap();
-            assert!(bytes.len() < 4096, "{} is {} bytes", path.display(), bytes.len());
+            assert!(
+                bytes.len() < 4096,
+                "{} is {} bytes",
+                path.display(),
+                bytes.len()
+            );
             assert!(bytes.windows(32).any(|w| w == id));
             for other in &ids {
                 if other != id {

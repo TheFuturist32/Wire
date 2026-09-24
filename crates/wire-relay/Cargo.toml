@@ -7,4 +7,4 @@ version.workspace = true
 description = "Localhost store-and-forward relay for Wire envelopes"
 
 [dependencies]
-wire-core = { path = "../wire-core" }
+wire-core = { path = "../wire-core", version = "0.1.0" }

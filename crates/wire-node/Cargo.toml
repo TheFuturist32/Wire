@@ -15,5 +15,5 @@ name = "wire-relay"
 path = "src/bin/wire-relay.rs"
 
 [dependencies]
-wire-core = { path = "../wire-core" }
-wire-relay = { path = "../wire-relay" }
+wire-core = { path = "../wire-core", version = "0.1.0" }
+wire-relay = { path = "../wire-relay", version = "0.1.0" }

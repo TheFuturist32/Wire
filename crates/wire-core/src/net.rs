@@ -46,7 +46,13 @@ pub fn exchange(addr: &str, request: &[u8]) -> Result<Vec<u8>> {
     read_frame(&mut sock)
 }
 
-pub fn push(addr: &str, sender: &[u8; 32], recipient: &[u8; 32], env_id: &[u8; 32], envelope: &[u8]) -> Result<()> {
+pub fn push(
+    addr: &str,
+    sender: &[u8; 32],
+    recipient: &[u8; 32],
+    env_id: &[u8; 32],
+    envelope: &[u8],
+) -> Result<()> {
     let mut req = Vec::with_capacity(1 + 96 + envelope.len());
     req.push(OP_PUSH);
     req.extend_from_slice(sender);

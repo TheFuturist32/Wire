@@ -105,12 +105,7 @@ pub fn party(tmp: &Path, name: &str, ttl: &str, caps: &str) -> Party {
     let vault = tmp.join(format!("{name}-vault"));
     let home = tmp.join(format!("{name}-home"));
     fs::create_dir_all(&home).unwrap();
-    let init = ok(&[
-        "vault",
-        "init",
-        "--path",
-        vault.to_str().unwrap(),
-    ]);
+    let init = ok(&["vault", "init", "--path", vault.to_str().unwrap()]);
     let runtime = home.join("runtime.bin");
     let enrolled = ok(&[
         "enroll",
@@ -134,7 +129,9 @@ pub fn party(tmp: &Path, name: &str, ttl: &str, caps: &str) -> Party {
 }
 
 pub fn join(a: &Party, b: &Party, relay: &str) -> String {
-    let invite = a.home.join(format!("invite-{}.bin", to_hex(&crypto::random32())));
+    let invite = a
+        .home
+        .join(format!("invite-{}.bin", to_hex(&crypto::random32())));
     let minted = ok(&[
         "invite",
         "mint",
@@ -283,7 +280,9 @@ impl Plugin {
             }
             let _ = tx.send(lines);
         });
-        let lines = rx.recv_timeout(Duration::from_secs(20)).expect("serve banner");
+        let lines = rx
+            .recv_timeout(Duration::from_secs(20))
+            .expect("serve banner");
         let text = lines.join("");
         Self {
             child: Some(child),
