@@ -1,0 +1,10 @@
+[package]
+name = "wire-relay"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+description = "Localhost store-and-forward relay for Wire envelopes"
+
+[dependencies]
+wire-core = { path = "../wire-core" }

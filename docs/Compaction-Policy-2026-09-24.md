@@ -1,15 +1,15 @@
 # Wire — Compaction & Snapshot Policy
 **Date:** 2026-09-24 (ET)  
-**Status:** v0.1 sketch — **unilateral local hot truncate** (revised 2026-09-24)  
+**Status:** v0.2 — **unilateral local hot truncate of the persisted log** (ephemeral frames are not logged)  
 **Pairs with:** one-pager §2b, threat model §7 (forks / per-replica evidence)
 
 ---
 
 ## 1. Problem
 
-Append-only + “no silent delete” + long-lived AI channels + hundreds of sub-AI events ⇒ **disk and sync cost grow without bound**.
+The persisted commitment log is append-only. Long-lived channels still accumulate membership changes, receipts, and shares. That is what can grow without a bound. Pixel streams and ordinary chatter are ephemeral frames. They are delivered and deleted from the relay on ack, so they are not a compaction problem and they are not truncation candidates.
 
-We need a way to **shrink what a live replica must hold** without:
+We need a way to **shrink the persisted hot log** a live replica must hold without:
 
 - pretending history never happened,
 - breaking receipt verification,
@@ -22,9 +22,9 @@ We need a way to **shrink what a live replica must hold** without:
 
 | Goal | Meaning |
 |---|---|
-| **Bounded hot storage** | Active replicas can drop old event bodies under clear rules. |
-| **Evidence preserved** | Receipts and membership decisions remain *provable* — either still local or retrievable from archive. |
-| **No silent delete** | Nothing disappears without a signed, policy-visible act (snapshot + ack, or explicit discard of a *local* archive copy). |
+| **Bounded hot storage** | Active replicas can drop old **persisted** event bodies under clear rules. |
+| **Evidence preserved** | Receipts and membership decisions remain provable — either still on the hot log or retrievable from that replica's archive. |
+| **No silent delete** | A local truncate writes a truncate mark on that replica (the covered tip). It is not required to be a signed channel event. Discarding your archive is an explicit local choice. Nothing is deleted from a peer's replica. |
 | **Fork-safe** | Compaction never papers over divergent tips. |
 | **PII-aware** | Compaction/merge respects sealed / `include_pii` boundaries. |
 | **Local autonomy** | Each replica may shrink **its own** hot storage anytime (unilateral). Peer consent is not required to manage your disk. |
@@ -167,11 +167,11 @@ Threat model D still applies: relay sees metadata (who, when, sizes).
 
 Enough to prove the policy isn’t fiction:
 
-1. Process A **unilaterally** truncates hot payloads below tip (no B ack); B keeps full log.  
-2. A verifies an old receipt via **local archive fixture**; without archive, verify fails honestly.  
-3. Optional path: `snapshot` + bilateral `ack_snapshot` as shared checkpoint (does not gate A’s truncate).  
-4. Under fork: A may still truncate locally; sync layer still reports `ForkDetected`.  
-5. Tests: no silent channel-wide delete; peer B unaffected by A’s truncate; “I discarded” ≠ “they discarded.”
+1. Process A unilaterally truncates persisted events below the tip (no B ack). The fixture is a receipt, not a pixel blob. B keeps a full log.
+2. A verifies that receipt via the local archive. Without the archive, verify fails honestly.
+3. `snapshot` / `ack_snapshot` remain optional shared checkpoints. They do not gate A's truncate, and the prototype does not require them for the truncate test.
+4. Under fork: A may still truncate locally. Fork status still reports the divergence. Sibling tips are not archived away to hide the fork.
+5. Tests: no silent channel-wide delete; peer B's log bytes are unchanged; "I discarded" is not "they discarded." Ephemeral frames never appear in either log.
 
 ---
 
@@ -187,4 +187,4 @@ Enough to prove the policy isn’t fiction:
 
 ## 12. One-line summary
 
-**Your hot log is yours to shrink unilaterally; optional bilateral snapshots are shared checkpoints only; archives preserve *your* evidence if you want it; forks don’t require peer permission to truncate; nothing is silently deleted channel-wide.**
+**Your persisted hot log is yours to shrink unilaterally; ephemeral frames were never in it; optional bilateral snapshots are shared checkpoints only; archives preserve your evidence if you want it; forks do not require peer permission to truncate; nothing is silently deleted channel-wide.**

@@ -1,0 +1,19 @@
+[package]
+name = "wire-node"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+version.workspace = true
+description = "Wire participant node and relay binaries"
+
+[[bin]]
+name = "wire-node"
+path = "src/main.rs"
+
+[[bin]]
+name = "wire-relay"
+path = "src/bin/wire-relay.rs"
+
+[dependencies]
+wire-core = { path = "../wire-core" }
+wire-relay = { path = "../wire-relay" }

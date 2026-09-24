@@ -8,7 +8,7 @@
 **Companion docs (read-only context; this file wins on prototype scope conflicts):**
 - `One-Pager-2026-09-23.md` — vision + locks  
 - `Threat-Model-2026-09-24.md` — adversaries  
-- `Compaction-Policy-2026-09-24.md` — unilateral truncate v0.1  
+- `Compaction-Policy-2026-09-24.md` — unilateral truncate v0.1
 
 ---
 
@@ -22,9 +22,9 @@
 
 ## 1. One-sentence product
 
-**Wire** is a library + thin binaries for **AI↔AI communication**: E2E encrypted opaque frames, per-channel append-only signed logs, bilateral agreement receipts, rotatable contact handles over a portable principal, local-first storage, optional localhost relay, and unilateral local compaction.
+**Wire** is a library + thin binaries for **AI↔AI communication**: E2E encrypted ephemeral frames, per-channel append-only commitment logs, bilateral receipts that two parties can finalize alone, an export any third party can verify, rotatable contact handles over one user-held principal, local-first storage, a localhost relay, and unilateral compaction of the persisted log.
 
-It does **not** host AIs, define intents, or ship UX shells.
+It does not host AIs, define intents, or ship UX shells.
 
 ---
 
@@ -32,63 +32,89 @@ It does **not** host AIs, define intents, or ship UX shells.
 
 | Lock | Rule |
 |---|---|
-| Custody | User-held **root** keys; runtimes get **short-lived delegated** keys only |
-| History | **Per-replica evidence** — not single global canonical truth |
-| Discovery | **Out-of-band invite / capability** only — no public directory |
-| Receipts | **Bilateral only** (compose pairs for multi-party later) |
-| Relay | **Localhost store-and-forward stub in scope** (untrusted; metadata visible) |
-| Compaction | **Unilateral local hot truncate** anytime; optional bilateral snapshot = shared checkpoint only |
+| Custody | User-held **root** keys; runtimes get **short-lived delegated** keys only. `vault init` creates a vault only if the path is empty and refuses to overwrite. |
+| History | **Per-replica evidence** — not single global canonical truth. Storage is `channels/<id>/log.bin` only. No global log. |
+| Discovery | **Out-of-band invite / capability** only — no public directory. Relay `LIST` is rejected. |
+| Two planes | Ephemeral frames are sealed and deleted from the relay on ack. They are not hash-chained. Persisted types are listed in §7.2. |
+| Receipts | **Bilateral only.** `propose` + `accept` + `proceed` on one proposal hash is final between those two principals. No third signature. |
+| Offline verify | `verify-receipt` takes a bundle file and optional content file. It does not take a vault, a home, or a relay address. |
+| Relay | **TCP store-and-forward stub in scope** (untrusted; metadata visible). Bind address is a flag. Tests use `127.0.0.1` and an ephemeral port. |
+| Compaction | **Unilateral local hot truncate** of persisted events anytime. Snapshot is not a gate. Ephemeral frames are not compacted because they are not logged. |
+| Client | `wire-node` is the plugin surface. One vault, many enrollments. Second AI = second delegated runtime, same principal. |
+| Scale | Test `scale_many_channels`: 8 nodes, 32 channels, ≥256 KiB ephemeral each. See §11 T14. |
 | Brand / git | **TheFuturist** account only |
-| Quantum | Envelope has `suite_id`; classical now; stub second suite id for agility — no full PQC required in week 2 |
+| Quantum | `suite_id = 1` is Ed25519 + X25519 + XChaCha20-Poly1305. `suite_id = 2` round-trips as a tag and is rejected for seal and sign. |
 
 ---
 
 ## 3. Non-goals (explicit)
 
-- Running or wrapping Claude/Grok/GPT/etc. inside this repo  
-- UX shells, intent taxonomy, AG watermark / bot-or-not  
-- Production multi-tenant relays, DHT, public contact directory  
-- N-party receipts, automatic fork merge, global consensus  
-- GDPR erase-everywhere, content moderation of opaque payloads  
-- “Faster than the internet” marketing claims in code comments
+- Running or wrapping Claude/Grok/GPT/etc. inside this repo
+- UX shells, intent taxonomy, AG watermark / bot-or-not
+- An MCP server in this pass (the CLI is the tool list it will wrap)
+- Production multi-tenant relays, DHT, public contact directory
+- N-party receipts, automatic fork merge, global consensus
+- Putting ephemeral frames, pixel streams, or chatter on the channel log
+- GDPR erase-everywhere, content moderation of opaque payloads
+- Latency bake-offs. The scale test is structural. Wall-clock time is printed and is not a pass/fail gate.
 
 ---
 
 ## 4. Suggested adoption wedge (prototype story)
 
-**Wedge:** Two stand-in “buyer” and “seller” agents negotiate a fake purchase over Wire:
+**Wedge:** Two stand-in buyer and seller processes negotiate a fake purchase over Wire:
 
-1. Blind channel (no PII).  
-2. Opaque offer/counter bytes.  
-3. Bilateral `propose` → `accept` → `proceed` on a price hash.  
-4. Optional `share_identity` only at the end.  
-5. One side unilaterally truncates hot log; still verifies an old receipt from archive.  
-6. One side proposes revert; other accepts (happy) **and** a second test where other refuses (stuck — expected).
+1. Blind channel (no PII).
+2. Opaque offer bytes delivered as an ephemeral frame. Those bytes are not on the ledger. The receipt stores their SHA-256.
+3. `propose` → `accept` → `proceed`. That is final. No third process is required.
+4. Optional `share_identity` only at the end.
+5. A separate process runs `verify-receipt` on the exported bundle and accepts it. A flipped bundle or a different content file is rejected.
+6. One side unilaterally truncates its hot log and still verifies the old receipt from its archive.
+7. One side proposes revert; the other refuses. State stays `stuck`.
 
-Stand-ins are **two OS processes** in the prototype. Real AIs plug in later via the same client library (§13).
+The same binaries then run many of these deals at once (T14). Real AIs plug in later via the same library and CLI (§13).
 
 ---
 
 ## 5. Architecture (prototype)
 
 ```
-┌─────────────────┐     envelopes      ┌─────────────────┐
-│ wire-node A     │◄──────────────────►│ localhost relay │
-│ (principal A,   │   store & forward  │ (ciphertext +   │
-│  delegated key) │◄──────────────────►│  metadata only) │
-└────────┬────────┘                    └────────▲────────┘
-         │ local hot log + optional archive     │
-         ▼                                      │
-┌─────────────────┐                             │
-│ wire-node B     │◄────────────────────────────┘
-│ (principal B)   │
+┌─────────────────┐   sealed envelopes    ┌─────────────────┐
+│ wire-node A     │◄────────────────────►│ relay (TCP)     │
+│ delegated key   │   PUSH / PULL / ACK   │ spool = ciphertext
+└────────┬────────┘                       │ delete on ACK   │
+         │                                └────────▲────────┘
+         │ ephemeral → inbox (not the log)         │
+         │ commitment → channels/<id>/log.bin      │
+         ▼                                         │
+┌─────────────────┐                                │
+│ wire-node B     │◄───────────────────────────────┘
+└────────┬────────┘
+         │ export bundle (no relay)
+         ▼
+┌─────────────────┐
+│ verify-receipt  │  not a member, no vault, no relay
 └─────────────────┘
 
-Library: wire-core (types, crypto envelope, log, receipts, invite, compact)
-Bins:    wire-node (one participant), wire-relay (stub)
+Library:  wire-core (codec, vault, chain, receipts, invite)
+          wire-relay (TCP spool)
+Binaries: wire-node, wire-relay   (both targets of the wire-node package,
+          so tests can spawn them; wire-relay crate is the library)
 ```
 
-**Trust:** relay never sees plaintext. Root keys never enter `wire-node` long-term store beyond an explicit test “principal vault” file on disk (simulating user-held store).
+**Trust:** the relay never sees plaintext. Root keys stay in the vault directory. The runtime file holds only the delegated secret. On the wire, receipt events travel inside encrypted envelopes. The exported bundle is what a third party is allowed to see, and only if a party hands it over.
+
+**Node directory:**
+
+```
+home/
+  runtime.bin
+  channels/<channel_id>/log.bin
+  channels/<channel_id>/archive/log.bin
+  retain/          # optional private copies, not evidence
+  inbox/           # ephemeral deliveries the local AI just received
+vault/             # root, shared by every runtime of this principal
+```
 
 ---
 
@@ -96,22 +122,15 @@ Bins:    wire-node (one participant), wire-relay (stub)
 
 ```
 wire/
-  Cargo.toml                  # workspace
-  crates/
-    wire-core/                # library: all protocol logic
-    wire-node/                # binary: one participant process
-    wire-relay/               # binary: localhost store-and-forward
-  tests/
-    e2e/                      # multi-process tests
-  docs/                       # copy or submodule of design notes (optional)
+  Cargo.toml
+  crates/wire-core/           # protocol library
+  crates/wire-relay/          # relay library
+  crates/wire-node/           # bins wire-node and wire-relay; tests/ e2e + scale
+  docs/
   README.md
 ```
 
-**Dependency policy:**
-- Prefer `rustls` / well-known US or ally-maintained crypto (`ring`, `ed25519-dalek`, `chacha20poly1305`, or equivalent — **pick one stack and justify in README**).  
-- No heavy frameworks (no Tokio-everything app server unless needed for relay; prefer simple TCP + length-prefixed frames).  
-- Do **not** reinvent signatures/AEAD; do reinvent as little “channel ledger” logic as possible but keep it small and owned.  
-- Every dep: one line in `docs/DEPS.md` — why, license, country/maintainer note, alternative considered.
+**Dependency policy:** the stack is `ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `sha2`, and `rand`. Justifications are in [`DEPS.md`](./DEPS.md). No Tokio, serde, or clap. Framing, the log, and the fixed argv parser are owned. Relay I/O is `std::net` TCP plus threads.
 
 ---
 
@@ -123,9 +142,9 @@ Use explicit versioning: `WireVersion = 0`.
 
 - `PrincipalId` — stable id derived from root verifying key  
 - `RootKeypair` — only in principal vault  
-- `DelegatedCredential` — `{ principal_id, runtime_id, scope, not_before, not_after, parent_sig }`  
-- `ContactHandle` — rotatable; maps to `PrincipalId` in local handle table  
-- `InviteCapability` — single-use or limited-use token/URL material to join/create channel (OOB)
+- `DelegatedCredential` — `{ root_pub, runtime_id, caps, not_before, not_after, ed25519_pub, x25519_pub, parent_sig }`. `not_after = 0` is already expired.
+- `ContactHandle` — rotatable string in the vault. Minting an invite for a retired handle fails. Principal id stays.
+- `InviteCapability` — single-use token inside an invite file. The inviter consumes it when the joiner's `member_add` is polled.
 
 ### 7.2 Channel & events
 
@@ -137,33 +156,36 @@ Use explicit versioning: `WireVersion = 0`.
 
 | Type | Purpose |
 |---|---|
-| `member_add` | Add principal or sub-participant with capabilities |
-| `member_cap_update` | Restrict/expand caps |
-| `frame` | Opaque payload ciphertext (or inner plaintext only in test suite with fake suite) |
-| `share_identity` | Explicit PII/identity share blob (still encrypted to members) |
-| `propose` / `accept` / `proceed` | Bilateral agreement |
-| `propose_revert` / `accept_revert` | Compensating agreement |
-| `snapshot` / `ack_snapshot` | Optional shared checkpoint |
-| `handle_rotate` | Local+announced handle change (as needed) |
+| `member_add` | Add the signer, with caps, the invite token, and handle generation |
+| `member_cap_update` | Restrict or expand caps |
+| `share_identity` | Explicit PII blob, sealed to the counterparty, persisted |
+| `propose` | `proposal_id` + SHA-256 content hash. Not the bytes. |
+| `accept` / `proceed` | Same `proposal_id`. Proceed is signed by the proposer. |
+| `propose_revert` / `accept_revert` | Compensating agreement. One side only → state `stuck`. |
+| `snapshot` / `ack_snapshot` | Optional shared checkpoint. Not required to truncate. |
+| `handle_rotate` | Announced handle change |
+| `cred_revoke` | Channel-visible revoke of a delegated cred id |
+
+There is no `frame` event. Opaque payloads are ephemeral envelopes (`kind = 1`). A local `--retain` path may store a private copy under `retain/`. That file is not the channel log. `poll --inbox` writes what the local AI just received, which is also not the log.
 
 ### 7.3 Capabilities (sub-AI)
 
-Bitflags or string set, e.g. `append_frame`, `propose`, `accept`, `spawn_member`, `compaction_ack` (default off for subs). Prototype: parent full; one sub with `append_frame` only.
+`append_frame`, `propose`, `accept`, `spawn_member`. Default enroll is all four. The sub-member test enrolls `append_frame` only, and `accept` is rejected both locally and by `screen` on the chain.
 
 ### 7.4 Envelope
 
 ```
-EnvelopeV0 {
-  suite_id: u16,
-  sender_cred_id,
-  channel_id?,
-  ciphertext,
-  aead_nonce,
-  // relay-visible: length, timestamps at relay — not inside AEAD
+Envelope {
+  magic "WENV", version 1,
+  suite_id: u16,          # 1 = classical; anything else fails open
+  kind: u8,               # 1 ephemeral plaintext, 2 persisted event bytes
+  sender_cred_id, recipient_cred_id, channel_id, sender_x25519,
+  nonce: 24 bytes,        # header is AEAD associated data
+  ciphertext              # XChaCha20-Poly1305
 }
 ```
 
-Start `suite_id = 1` (classical). Stub `suite_id = 2` rejected or round-trip tagged only.
+The relay stores the envelope bytes plus arrival time and the two cred ids. It does not parse the plaintext. `suite_id = 2` can be read back off a header and is rejected by seal and open.
 
 ---
 
@@ -171,20 +193,15 @@ Start `suite_id = 1` (classical). Stub `suite_id = 2` rejected or round-trip tag
 
 | Module | Responsibility |
 |---|---|
-| `vault` | Create principal, enroll delegated cred, rotate/revoke |
-| `handles` | Multiple handles → principal; rotate |
-| `invite` | Mint/consume OOB capability |
-| `log` | Append-only hash-linked store; tip; fork detect |
-| `membership` | Caps; sub-AI add |
-| `crypto` | Suite registry; sign/verify; seal/open |
-| `receipts` | propose/accept/proceed/revert helpers + verify |
-| `compact` | Unilateral truncate_below; optional snapshot helpers; archive I/O |
-| `merge_index` | Stub group index + `include_pii: bool` |
-| `wire_codec` | Length-prefixed encode/decode |
+| `codec` | Length-prefixed encode/decode, hex ids |
+| `crypto` | Suite 1 seal/open and signatures. Suite 2 rejected. |
+| `model` | Credentials, events, invites, receipt bundles |
+| `chain` | Per-channel hash log, fork detect, caps screen, truncate |
+| `ops` | Vault, enroll, invite, send, poll, receipts, export, merge |
 
-`wire-relay`: accept TCP connections; queue envelopes by `channel_id` + recipient handle/cred; deliver when recipient polls or reconnects; **no decrypt**.
+`wire-relay`: TCP. Ops are `PUSH`, `PULL`, `ACK`. `LIST` is rejected. Spool key is recipient cred id. Files are deleted on `ACK`. No decrypt.
 
-`wire-node`: CLI or simple RPC: vault path, relay addr, send frame, receipt flows, truncate, export archive.
+`wire-node`: one-shot CLI. Each command persists to disk and exits.
 
 ---
 
@@ -192,18 +209,18 @@ Start `suite_id = 1` (classical). Stub `suite_id = 2` rejected or round-trip tag
 
 Implement in this order; each step ends with failing→passing tests:
 
-1. **Log + hash chain** (no crypto) — append, verify chain, fork detect  
-2. **Vault + delegated creds** — root never used to sign frames directly in happy path  
-3. **Crypto suite_id=1** — sign events; seal opaque frames  
-4. **Invite capability** — A mints, B consumes, channel created  
-5. **Dual-process + relay** — A offline, B sends, A comes online, receives  
-6. **Bilateral receipts** — happy proceed + refuse-revert stuck path  
-7. **share_identity** optional after proceed  
-8. **member_add** sub with reduced caps; sub cannot accept receipt  
-9. **Handle rotate** — old handle stops resolving for *new* invites  
-10. **Unilateral compact** — truncate hot; verify from archive; peer unaffected  
-11. **Optional snapshot/ack** — does not gate truncate  
-12. **merge_index stub** — `include_pii false` omits share events from export view  
+1. **Codec + hash chain** — append, verify, fork detect, flipped byte fails
+2. **Vault + delegated creds** — refuse overwrite; two enrolls share a principal; root never signs events
+3. **Crypto suite_id=1** — sign events; seal ephemeral frames; suite 2 rejected
+4. **Invite file** — A mints, B consumes, single-use token
+5. **Processes + relay** — offline delivery; spool has no plaintext; spool empty after ack
+6. **Receipts** — two-party proceed; offline verify; stuck revert; content hash mismatch rejected
+7. **share_identity** after the channel already worked without it
+8. **Sub-member** with `append_frame` only cannot accept
+9. **Handle rotate** — old handle cannot mint; new handle can; same principal
+10. **Unilateral compact** — archive verifies; missing archive fails; peer log unchanged
+11. **Scale** — 8×32 ephemeral payloads do not grow the logs
+12. **Merge export** — `include_pii false` omits share events. Cut this before the scale test if time slips. Snapshot events are defined and are not a truncate gate.
 
 ---
 
@@ -211,71 +228,92 @@ Implement in this order; each step ends with failing→passing tests:
 
 ```text
 wire-node vault init --path ./vault-a
-wire-node enroll --vault ./vault-a --out ./runtime-a.json --ttl 1h
-wire-node invite mint --runtime ./runtime-a.json --out invite.txt
-wire-node invite accept --runtime ./runtime-b.json --invite invite.txt
-wire-node send-frame --runtime ./runtime-a.json --channel C --data-file offer.bin
-wire-node receipt propose|accept|proceed|propose-revert|accept-revert ...
-wire-node share-identity --runtime ./runtime-a.json --channel C --file pii.json
-wire-node compact truncate-below --runtime ./runtime-a.json --channel C --tip T --archive ./arch-a
-wire-node fork-status --runtime ./runtime-a.json --channel C
-wire-relay bind 127.0.0.1:7700 --data ./relay-data
+wire-node enroll --vault ./vault-a --out ./home-a/runtime.bin --ttl 1h --caps all
+wire-node handle rotate --vault ./vault-a
+wire-node invite mint --vault ./vault-a --runtime ./home-a/runtime.bin --home ./home-a --handle <handle> --out invite.bin
+wire-node invite accept --runtime ./home-b/runtime.bin --home ./home-b --invite invite.bin --relay 127.0.0.1:PORT
+wire-node send-frame --runtime ./home-a/runtime.bin --home ./home-a --channel <hex> --data-file offer.bin --relay 127.0.0.1:PORT [--retain ./home-a/retain]
+wire-node poll --runtime ./home-b/runtime.bin --home ./home-b --relay 127.0.0.1:PORT [--inbox ./home-b/inbox]
+wire-node receipt propose|accept|proceed|propose-revert|accept-revert|status --runtime ... --home ... --channel <hex> --relay ... [--proposal <hex>] [--content-file offer.bin]
+wire-node share-identity --runtime ... --home ... --channel <hex> --file pii.bin --relay ...
+wire-node show-share --runtime ... --home ... --channel <hex> --out pii.out
+wire-node member-add --runtime ... --home ... --channel <hex> --cred ./sub.bin --caps append_frame --relay ...
+wire-node cred revoke --runtime ... --home ... --channel <hex> --cred <hex> --relay ...
+wire-node compact truncate-below --runtime ... --home ... --channel <hex>
+wire-node export-receipt --runtime ... --home ... --channel <hex> --proposal <hex> --out receipt.bin
+wire-node verify-receipt --bundle receipt.bin [--content-file offer.bin]
+wire-node export-merge --runtime ... --home ... --channel <hex> --include-pii false --out view.txt
+wire-node fork-status --home ... --channel <hex> [--peer-log ./other/log.bin]
+wire-relay bind 127.0.0.1:0 --data ./relay-data
 ```
 
-Exact flags may vary; keep scriptable for `tests/e2e`.
+Runtime and invite files are length-prefixed binary, not JSON. `verify-receipt` is the third-party tool: bundle in, no home, no vault, no relay. `vault init` prints `principal` and `handle`. Successful commands print `ok` plus machine-readable `key value` lines.
 
 ---
 
 ## 11. Acceptance tests (definition of done)
 
-All must pass in CI / local `cargo test` + e2e script:
+All must pass in `cargo test --workspace` from this repo. End-to-end tests spawn `wire-node` and `wire-relay` as OS processes over TCP.
 
 | ID | Test |
 |---|---|
-| T1 | Two nodes exchange opaque bytes via relay with E2E seal (relay cannot read plaintext — assert relay store ≠ plaintext) |
-| T2 | Offline delivery: B sends while A down; A receives after reconnect |
-| T3 | Invite OOB only; no directory API exists |
-| T4 | Receipts: propose/accept/proceed verify; mismatched proposal hash rejected |
-| T5 | Revert refuse: A propose_revert, B does not accept → no proceed_revert; both logs consistent with stuck state |
-| T6 | Blind then share: channel works without share; after share, peer can read identity blob |
-| T7 | Sub-member with `append_frame` only cannot `accept` |
-| T8 | Handle rotate: invite to old handle fails; new handle works |
-| T9 | Delegated key expiry/revoke: expired cred cannot append |
-| T10 | Unilateral truncate on A; B full; A verifies old receipt from archive; without archive verify fails |
-| T11 | Fork detect: diverge tips → `ForkDetected`; truncate still allowed locally |
-| T12 | merge export `include_pii=false` excludes `share_identity` bodies |
-| T13 | `suite_id` round-trip; unknown suite rejected |
+| T1 | Two nodes exchange opaque bytes via the relay. Spool files do not contain the plaintext marker. After ack the spool is gone. Neither `log.bin` contains the marker. |
+| T2 | Offline delivery: B sends while A is not running. A polls later and receives the frame in `--inbox`. |
+| T3 | Invite is a file. A `LIST` op to the relay is rejected. |
+| T4 | propose/accept/proceed verifies offline. A different content file is rejected. A mismatched proposal id is rejected. |
+| T5 | A `propose_revert`, B does not accept. `receipt status` is `stuck`. No completed revert event. |
+| T6 | Channel works with no `share_identity`. After share, the peer's `show-share` writes the identity blob. |
+| T7 | Sub-member with `append_frame` only cannot `accept`. |
+| T8 | After rotate, mint with the old handle fails and mint with the new handle works. Principal id is unchanged. |
+| T9 | `--ttl 0` cannot append. After a `cred_revoke` is polled, that cred cannot append. A valid signature from the revoked cred is still rejected by chain screening. |
+| T10 | A truncates; B's log bytes are unchanged. A exports the old receipt while the archive exists, and export fails after the archive is removed. |
+| T11 | Divergent tips report `fork yes`. A may still truncate. Fork status stays yes. |
+| T12 | `export-merge --include-pii false` has no `share_identity` line. |
+| T13 | `suite_id=1` seals. `suite_id=2` is readable as a header field and rejected for seal/open/sign. |
+| T14 | `scale_many_channels`: 8 node processes, 32 channels, ≥256 KiB ephemeral payload each, then a receipt trio. Every `log.bin` is under 4 KiB. Sum of all `log.bin` files is under 32 × 4 KiB. No `global.log` and no file holds two channel ids. A home that never joined has no `channels/<id>/` directory. After acks the spool has no files. The plaintext marker is absent from spool files sampled before ack and from every `log.bin`. A process that only runs `verify-receipt` accepts all 32 bundles. Elapsed time is printed and is not the gate. If the machine cannot host 8 processes, drop to 4×8 but do not drop the byte ceilings, the empty spool, the missing global log, or offline verify. |
+| T15 | `--retain` writes a private file. Both peers' `log.bin` files still lack the frame marker. |
+| T16 | Proceed completes with exactly two signing principals. `verify-receipt` is invoked with `--bundle` only (plus the content file). A flipped bundle fails closed. |
 
-**Timebox:** ~2 weeks solo AI-assisted. If slipping, cut T12 and optional snapshot/ack first; do **not** cut T1–T6, T9–T11.
+**Cut line:** T12 may slip. Do not cut T1–T11, T13–T16. Snapshot acknowledgement is not a required test.
 
 ---
 
 ## 12. Security / engineering checklist for Build
 
-- [ ] Root key file mode restricted; never logged  
-- [ ] Relay logs metadata only (document fields)  
-- [ ] No `unsafe` without comment + review note  
-- [ ] Fuzz or at least proptest property tests on codec + chain  
-- [ ] `DEPS.md` filled  
-- [ ] README: how to run e2e in 10 minutes  
-- [ ] License placeholder (founder chooses later; MIT/Apache dual common)
+- [ ] Root key file ACL limited to the current Windows user; secrets never printed
+- [ ] Relay spool header is arrival time, sender cred id, recipient cred id, and ciphertext. No plaintext payload.
+- [ ] `forbid(unsafe_code)` on the crates
+- [ ] Truncation and flipped-byte tests on the codec and the log
+- [ ] `DEPS.md` filled
+- [ ] README: `cargo test --workspace -- --nocapture`
+- [ ] License placeholder MIT OR Apache-2.0 until the founder chooses
 
 ---
 
 ## 13. Choosing 2+ real AIs for post-prototype testing
 
-Prototype uses **process stand-ins**. After `wire-core` is stable, wrap thin **clients** that call the same APIs from real AI stacks.
+The product shape is a local plugin/daemon, not a model that speaks Wire. `wire-node` is that plugin for the prototype. On first run, if the vault path is empty, it creates one principal and a contact handle. If the vault exists, it refuses to overwrite. Each AI app is enrolled with `enroll` and receives a delegated credential. A second product on the same device uses the same vault. It does not mint a second person. A deliberate extra persona is a second vault the user asks for. The model never receives the root. An MCP adapter is P1 and must call this CLI, not invent another protocol.
+
+Tool list the adapter will expose, matching the commands in §10:
+
+- `send` — ephemeral frame
+- `receipt` — persisted bilateral confirmation
+- `share-identity` — explicit
+- `verify-receipt` — offline check of an export
+- vault init / enroll — daemon startup, not a step the model must remember
+
+Prototype tests use OS processes as the stand-ins. After `wire-core` is stable, real AIs are runtimes under the same vault rules.
 
 ### 13.1 What “AI under test” means here
 
 An AI is a valid Wire test client if it can:
 
-1. Hold or call out to a **delegated credential** (not the user root),  
-2. Send/receive **opaque bytes** on a channel,  
-3. Call propose/accept when its policy says so,  
-4. Run on a different trust domain than its peer (vendor/process isolation).
+1. Call the local plugin, which holds the delegated credential (not the user root),
+2. Send and receive opaque bytes on a channel,
+3. Call propose/accept when its own policy says so,
+4. Run on a different trust domain than its peer (vendor or process isolation).
 
-Wire does **not** need the model to “understand” Wire natively — a **tool/adapter** beside the model is enough (and preferred).
+The model does not need to understand Wire natively. A tool adapter beside the model is the client.
 
 ### 13.2 Selection criteria (score each candidate 1–5)
 
@@ -326,10 +364,9 @@ Wire does **not** need the model to “understand” Wire natively — a **tool/
 
 | Phase | Deliverable | Owner |
 |---|---|---|
-| **P0 — this prototype** | `wire` repo, §11 tests green | Grok Build |
-| **P1 — adapters** | Thin adapters for chosen 2 AIs calling `wire-node` or linking `wire-core` | Build + founder picks from §13 |
-| **P2 — wedge demo** | Scripted buyer/seller blind→share→receipt on real AIs | Founder watches |
-| **P3+** | PQ hybrid suite, real relay hardening, multi-party receipts — only after P2 |
+| **Phase 1 — PoC** | Library, one-shot node, relay, §11 tests including 8×32 scale | This commit |
+| **Phase 2 — plugin** | Local daemon, tool card, scripted buyer/seller wedge | Next |
+| **Later** | Real model adapters, transfer metrics, PQ, production relay | After the wedge |
 
 ---
 
@@ -342,16 +379,12 @@ Wire does **not** need the model to “understand” Wire natively — a **tool/
 
 ---
 
-## 16. First commit instructions (for Grok Build)
+## 16. Where the code lives
 
-1. Create private repo under **TheFuturist** named `wire` (or `wire-protocol`).  
-2. Scaffold workspace + empty `wire-core` with a failing `log` test.  
-3. Follow §9 order; pause for founder review after T1–T6 green.  
-4. Do not add AG/Sale Spotted remotes or branding.  
-5. Keep this design doc in `docs/Wire-Prototype-Design.md` (copy on first commit).
+The git repo is `C:\Users\Zach\git\wire` on branch `develop`. Work there. Do not add AG or Sale Spotted remotes or branding. Keep this design doc beside the code under `docs/`.
 
 ---
 
 ## 17. Summary for the implementer
 
-Build a **Rust library + node + localhost relay** that proves: opaque E2E frames, OOB invite, bilateral receipts (including stuck revert), delegated keys, handle rotate, sub-AI caps, fork detect, unilateral compact with archive, and merge PII filter — all with TDD. **Do not build the AIs.** Real AI testing is Phase 1 adapters using the pair chosen in §13.
+Build a Rust library, a node, and a TCP relay that prove: ephemeral E2E frames that never enter the log, OOB invite, two-party receipts including a stuck revert, offline verification by a non-member, delegated keys, handle rotate, sub-AI caps, fork detect, unilateral compact with archive, a merge PII filter, and the 8×32 scale assertions. Do not build the AIs. Real AI testing is Phase 1 adapters using the pair chosen in §13.

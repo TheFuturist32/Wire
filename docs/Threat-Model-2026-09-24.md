@@ -12,9 +12,9 @@
 |---|---|
 | **Principal root keys** | Long-lived identity; compromise = permanent impersonation until rotation (and rotation may not convince past counterparties). |
 | **Delegated runtime keys** | Let a specific AI/device speak *as* the principal for a limited time/scope. |
-| **Channel event log (local replica)** | History the principal relies on for receipts, disputes, and continuity. |
-| **Payload confidentiality** | Opaque AI↔AI content (may include future binary/pixel streams). |
-| **Explicit share events (PII)** | Identity/payment/etc. only after intentional share — high sensitivity once present. |
+| **Channel commitment log (local replica)** | Persisted history the principal relies on for receipts and continuity. Ephemeral frames are not this asset. |
+| **Payload confidentiality in flight** | Opaque AI↔AI content, including pixel streams. Confidential while queued and on the wire. Not retained by the fabric after ack. |
+| **Explicit share events (PII)** | Identity/payment/etc. only after intentional share — high sensitivity once present, and these events are persisted. |
 | **Contact handles → principal binding** | Reachability without burning the principal; rotation must actually cut spam. |
 | **Agreement receipts** | Evidence that both parties signed the same proposal / revert. |
 | **Membership / capability grants** | Who may append, spawn sub-AIs, or read sealed material. |
@@ -42,6 +42,8 @@
 ```
 
 **Locked custody rule:** root keys never leave user-held storage. Cloud AI vendors are **untrusted for root custody**. A runtime that needs to speak Wire receives a **delegated** credential with expiry and scope.
+
+**Plugin:** the local daemon creates a vault only when the path is empty, and it must refuse to overwrite an existing vault. A compromised AI runtime is adversary B (delegated-key window). It is not, by itself, a root compromise. Each additional AI on the device enrolls against the same vault.
 
 ---
 
@@ -125,7 +127,7 @@ Goals: unsolicited channel opens / invite floods after a handle is posted public
 | Traffic graph | Minimize stable identifiers on the wire; rotate handles; optional padding (later) | Timing/volume still leak |
 | Drop / delay | Multi-relay or peer retry; detect stall via timeouts | Availability attack works |
 | Tamper ciphertext | AEAD / signed envelopes — tamper detected | Drop still works |
-| Store forever for later decrypt | Crypto agility + re-key; PQ-hybrid for long-lived channel secrets | Old ciphertext under weak suite remains at risk |
+| Store forever for later decrypt | Ephemeral spool deleted on ack. Crypto agility + re-key for persisted envelopes still at rest on peers | A relay that ignores delete, or old ciphertext under a weak suite, remains a risk. Metadata (who, when, size) is unchanged. |
 
 ### E. Global passive observer
 
@@ -173,9 +175,9 @@ Goals: unsolicited channel opens / invite floods after a handle is posted public
 
 ## 7. History / forks — precise claim
 
-**Wire claims:** A replica can show a hash-linked, signed sequence of events it holds, and can prove which receipts it signed.
+**Wire claims:** A replica can show a hash-linked, signed sequence of **commitment** events it holds, and can prove which receipts it signed. Two valid signatures on the same proposal hash (`propose` and `accept`, closed by the proposer's `proceed`) are final between those two principals. A third party who did not sign is not required and cannot block finality. Anyone later given the exported bundle can check those signatures and the content hash without joining the channel, without a relay, and without the ephemeral payloads. They learn identity only if the exporter included a `share_identity` event.
 
-**Wire does not claim:** There is always one true channel history everyone converges to.
+**Wire does not claim:** There is always one true channel history everyone converges to. A verifier is not a trusted role and is not a member.
 
 **Fork handling (v0):** Detect divergence (conflicting tips / membership). Surface to clients. Resolution is **out of band or future sync policy** — not silent rewrite. Agreed reverts are new events on a shared tip both parties append to *when they still share a tip*.
 
@@ -192,18 +194,19 @@ Wire is **not** a content moderator. Opaque payloads are the point. Abuse conten
 ## 9. Implications for the prototype
 
 Must exercise:
-1. User-held root + delegated runtime key (even if “root” is a local file for tests).  
-2. Two replicas that can **diverge** and report fork — do not fake automatic merge of conflict.  
-3. Invite capability create/consume (no directory).  
-4. Bilateral propose/accept/proceed + revert path + **stuck** path when one side refuses.  
-5. Explicit `share_identity` vs blind channel.  
-6. Sub-member with **reduced** capability vs parent.  
-7. Envelope `suite_id` (classical now; stub second suite).
+1. User-held root + delegated runtime key (root is a local file for tests). A second enroll shares the principal. Vault init refuses to overwrite.
+2. Two replicas that can diverge and report fork. Do not silently merge.
+3. Invite capability create/consume (no directory). Relay `LIST` is rejected.
+4. Bilateral propose/accept/proceed is final with two parties. A non-member verifies the export offline. Revert path stays **stuck** when one side refuses.
+5. Explicit `share_identity` vs a channel that already worked with only ephemeral frames.
+6. Sub-member with reduced capability vs parent.
+7. Envelope `suite_id` (classical now; stub second suite rejected for seal and sign).
+8. Ephemeral payload absent from channel logs and from the relay spool after ack. Scale fixture: 8 nodes, 32 channels, ≥256 KiB ephemeral each.
 
 Must also stub:
-- Localhost relay (metadata visible) — **locked in prototype scope**.  
-- Unilateral local hot truncate + optional bilateral snapshot checkpoint + archive re-verify — see Compaction-Policy doc v0.1.  
-- Revoke delegated key and show peer rejection after gossip of revoke.
+- TCP relay (metadata visible) — locked in prototype scope. Ephemeral spool deleted on ack.
+- Unilateral local hot truncate of persisted events + archive re-verify — see Compaction-Policy. Snapshot does not gate truncate.
+- Revoke delegated key and show rejection after the revoke event is delivered.
 
 ---
 
@@ -222,6 +225,6 @@ Must also stub:
 
 1. ~~Relay stub in prototype scope?~~ → yes.  
 2. ~~Compaction / snapshot policy~~ → Compaction-Policy-2026-09-24.md.  
-3. Adoption wedge scenario (one concrete two-AI story).  
+3. ~~Adoption wedge~~ → blind buyer/seller, two-party close, optional offline verify.
 4. Concrete principal-store mechanism for real devices (enclave vs encrypted file vs hardware key).  
 5. First classical crypto suite + PQ hybrid candidates (US/ally libs).
