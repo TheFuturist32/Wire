@@ -42,4 +42,5 @@ cargo test --workspace -- --nocapture
 
 That test shows the scaling shape: work and storage follow the channels you belong to, and ephemeral bytes do not become history. It does not claim a multi-region relay. The relay bind address is configuration, so leaving localhost later is deployment, not a new protocol.
 
-License placeholder: MIT OR Apache-2.0, pending a founder choice.
+License: [MIT](LICENSE).
+

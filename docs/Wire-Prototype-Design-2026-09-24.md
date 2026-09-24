@@ -289,7 +289,7 @@ All must pass in `cargo test --workspace` from this repo. End-to-end tests spawn
 - [ ] Truncation and flipped-byte tests on the codec and the log
 - [ ] `DEPS.md` filled
 - [ ] README: `cargo test --workspace -- --nocapture`
-- [ ] License placeholder MIT OR Apache-2.0 until the founder chooses
+- [x] License: MIT (Bitcoin-style; founder locked 2026-09-24)
 
 ---
 
@@ -393,3 +393,4 @@ The git repo is `C:\Users\Zach\git\wire` on branch `develop`. Work there. Do not
 ## 17. Summary for the implementer
 
 Build a Rust library, a node, and a TCP relay that prove: ephemeral E2E frames that never enter the log, OOB invite, two-party receipts including a stuck revert, offline verification by a non-member, delegated keys, handle rotate, sub-AI caps, fork detect, unilateral compact with archive, a merge PII filter, and the 8×32 scale assertions. Do not build the AIs. Real AI testing is Phase 1 adapters using the pair chosen in §13.
+

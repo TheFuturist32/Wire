@@ -4,6 +4,6 @@ members = ["crates/wire-core", "crates/wire-relay", "crates/wire-node"]
 
 [workspace.package]
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 publish = false
 version = "0.1.0"
