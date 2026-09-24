@@ -154,21 +154,22 @@ pub fn send_frame(runtime_path: &Path, home: &Path, channel: &[u8; 32], payload:
 pub struct PollOut {
     pub ephemeral: usize,
     pub ledger: usize,
+    pub payloads: Vec<Vec<u8>>,
 }
 
 pub fn poll(runtime_path: &Path, home: &Path, relay: &str, inbox: Option<&Path>) -> Result<PollOut> {
     let runtime = load_runtime(runtime_path)?;
     let batch = net::pull(relay, &runtime.cred_id())?;
-    let mut out = PollOut { ephemeral: 0, ledger: 0 };
+    let mut out = PollOut { ephemeral: 0, ledger: 0, payloads: Vec::new() };
     let mut first_err: Option<Error> = None;
     for (env_id, bytes) in batch {
         match accept_envelope(home, &runtime, &bytes, inbox) {
-            Ok(kind) => {
-                if kind == KIND_EPHEMERAL {
-                    out.ephemeral += 1;
-                } else {
-                    out.ledger += 1;
-                }
+            Ok(Some(plain)) => {
+                out.ephemeral += 1;
+                out.payloads.push(plain);
+            }
+            Ok(None) => {
+                out.ledger += 1;
             }
             Err(e) => {
                 if first_err.is_none() {
@@ -398,14 +399,14 @@ fn state_of(chain: &Chain, proposal: &[u8; 32]) -> &'static str {
     chain.receipt_state(proposal)
 }
 
-fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Option<&Path>) -> Result<u8> {
+fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Option<&Path>) -> Result<Option<Vec<u8>>> {
     let opened = crypto::open(&runtime.agree, &runtime.cred_id(), bytes)?;
     if opened.kind == KIND_EPHEMERAL {
         if let Some(dir) = inbox {
             fs::create_dir_all(dir)?;
             fs::write(dir.join(format!("{}.bin", to_hex(&crypto::sha256(&opened.plaintext)))), &opened.plaintext)?;
         }
-        return Ok(KIND_EPHEMERAL);
+        return Ok(Some(opened.plaintext));
     }
     if opened.kind != KIND_LEDGER {
         return Err(Error::new("unknown envelope kind"));
@@ -417,7 +418,7 @@ fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Op
     let path = log_path(home, &event.channel_id);
     let mut chain = Chain::load(&path)?;
     if chain.contains(&event.id()) {
-        return Ok(KIND_LEDGER);
+        return Ok(None);
     }
     if event.typ == T_MEMBER_ADD {
         let token_file = token_path(home, &event.channel_id);
@@ -435,7 +436,7 @@ fn accept_envelope(home: &Path, runtime: &RuntimeSecret, bytes: &[u8], inbox: Op
     chain.screen(&event, crypto::now_unix())?;
     chain.append(event)?;
     chain.save(&path)?;
-    Ok(KIND_LEDGER)
+    Ok(None)
 }
 
 fn push_to_others(relay: &str, runtime: &RuntimeSecret, chain: &Chain, channel: &[u8; 32], payload: &[u8], kind: u8) -> Result<()> {

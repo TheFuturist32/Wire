@@ -10,6 +10,8 @@ use wire_core::error::Error;
 use wire_core::model::{self, RuntimeSecret};
 use wire_core::ops;
 
+mod serve;
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     if let Err(e) = dispatch(&args) {
@@ -21,6 +23,7 @@ fn main() -> ExitCode {
 
 fn dispatch(args: &[String]) -> Result<(), Error> {
     match args.first().map(String::as_str) {
+        Some("serve") => cmd_serve(args),
         Some("vault") => cmd_vault(args),
         Some("enroll") => cmd_enroll(args),
         Some("handle") => cmd_handle(args),
@@ -39,6 +42,16 @@ fn dispatch(args: &[String]) -> Result<(), Error> {
         Some("fork-status") => cmd_fork(args),
         _ => Err(Error::new("unknown command")),
     }
+}
+
+fn cmd_serve(args: &[String]) -> Result<(), Error> {
+    let policy = optional(args, "policy");
+    serve::run(
+        Path::new(&require(args, "vault")?),
+        Path::new(&require(args, "home")?),
+        &require(args, "relay")?,
+        policy.as_deref().map(Path::new),
+    )
 }
 
 fn cmd_vault(args: &[String]) -> Result<(), Error> {

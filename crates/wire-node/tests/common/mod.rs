@@ -225,6 +225,85 @@ pub fn file_contains(path: &Path, needle: &[u8]) -> bool {
 
 pub const MARKER: &[u8] = b"WIRE-PIXEL-MARKER-v1";
 
+pub struct Plugin {
+    child: Option<Child>,
+    pub addr: String,
+    pub principal: String,
+    pub handle: String,
+    pub vault: PathBuf,
+    pub home: PathBuf,
+}
+
+impl Plugin {
+    pub fn start(tmp: &Path, name: &str, relay: &str, policy: Option<&Path>) -> Self {
+        let vault = tmp.join(format!("{name}-vault"));
+        let home = tmp.join(format!("{name}-home"));
+        fs::create_dir_all(&home).unwrap();
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_wire-node"));
+        cmd.args([
+            "serve",
+            "--vault",
+            vault.to_str().unwrap(),
+            "--home",
+            home.to_str().unwrap(),
+            "--relay",
+            relay,
+        ]);
+        if let Some(path) = policy {
+            cmd.args(["--policy", path.to_str().unwrap()]);
+        }
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("spawn serve");
+        let stdout = child.stdout.take().unwrap();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut reader = BufReader::new(stdout);
+            let mut lines = Vec::new();
+            for _ in 0..3 {
+                let mut line = String::new();
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    break;
+                }
+                lines.push(line);
+            }
+            let _ = tx.send(lines);
+        });
+        let lines = rx.recv_timeout(Duration::from_secs(20)).expect("serve banner");
+        let text = lines.join("");
+        Self {
+            child: Some(child),
+            addr: field(&text, "bound"),
+            principal: field(&text, "principal"),
+            handle: field(&text, "handle"),
+            vault,
+            home,
+        }
+    }
+}
+
+impl Drop for Plugin {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+pub fn plugin_call(addr: &str, args: &[&str], blobs: &[Vec<u8>]) -> wire_core::plugin::Reply {
+    let owned: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+    wire_core::plugin::call(addr, &owned, blobs).unwrap_or_else(|e| panic!("plugin call: {e}"))
+}
+
+pub fn plugin_ok(addr: &str, args: &[&str], blobs: &[Vec<u8>]) -> wire_core::plugin::Reply {
+    let reply = plugin_call(addr, args, blobs);
+    assert!(reply.ok, "plugin failed {args:?}\n{}", reply.text);
+    reply
+}
+
 pub fn payload(size: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(size);
     while out.len() < size {

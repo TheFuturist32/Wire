@@ -12,7 +12,10 @@ Repo/brand: **TheFuturist** git only. Codename: **Wire**.
 2. **[docs/One-Pager-2026-09-23.md](docs/One-Pager-2026-09-23.md)** — vision and locked decisions
 3. **[docs/Threat-Model-2026-09-24.md](docs/Threat-Model-2026-09-24.md)** — adversaries and trust boundaries
 4. **[docs/Compaction-Policy-2026-09-24.md](docs/Compaction-Policy-2026-09-24.md)** — unilateral local truncate of the persisted log
-5. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
+5. **[docs/Tool-Card-2026-09-24.md](docs/Tool-Card-2026-09-24.md)** — instructions any tool-calling AI uses; safeguards live in the plugin
+6. **[docs/DEPS.md](docs/DEPS.md)** — dependency justifications
+
+`wire-node serve` is the on-device plugin: one vault, many delegated runtimes, and the same commands over a localhost socket. A policy file can cap payload size and require a host-held confirm token before share or proceed.
 
 ## Layout
 

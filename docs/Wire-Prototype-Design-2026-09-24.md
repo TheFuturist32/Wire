@@ -9,6 +9,7 @@
 - `One-Pager-2026-09-23.md` — vision + locks  
 - `Threat-Model-2026-09-24.md` — adversaries  
 - `Compaction-Policy-2026-09-24.md` — unilateral truncate v0.1
+- `Tool-Card-2026-09-24.md` — model-facing tool instructions and plugin safeguards
 
 ---
 
@@ -365,7 +366,7 @@ The model does not need to understand Wire natively. A tool adapter beside the m
 | Phase | Deliverable | Owner |
 |---|---|---|
 | **Phase 1 — PoC** | Library, one-shot node, relay, §11 tests including 8×32 scale | This commit |
-| **Phase 2 — plugin** | Local daemon, tool card, scripted buyer/seller wedge | Next |
+| **Phase 2 — plugin** | `wire-node serve`, tool card, confirm/size policy, scripted buyer/seller wedge | This commit |
 | **Later** | Real model adapters, transfer metrics, PQ, production relay | After the wedge |
 
 ---

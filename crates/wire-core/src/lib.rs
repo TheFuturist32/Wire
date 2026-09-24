@@ -7,3 +7,4 @@ pub mod error;
 pub mod model;
 pub mod net;
 pub mod ops;
+pub mod plugin;
