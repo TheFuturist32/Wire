@@ -43,6 +43,7 @@ fn dispatch(args: &[String]) -> Result<(), Error> {
         Some("talk") => cmd_talk(args),
         Some("explain-talk") => cmd_explain_talk(args),
         Some("explain-log") => cmd_explain_log(args),
+        Some("metrics") => cmd_metrics(args),
         _ => Err(Error::new("unknown command")),
     }
 }
@@ -332,6 +333,15 @@ fn cmd_explain_talk(args: &[String]) -> Result<(), Error> {
 fn cmd_explain_log(args: &[String]) -> Result<(), Error> {
     let text = ops::explain_channel(Path::new(&require(args, "home")?), &parse_id(&require(args, "channel")?)?)?;
     print!("{text}");
+    println!("ok");
+    Ok(())
+}
+
+fn cmd_metrics(args: &[String]) -> Result<(), Error> {
+    let bytes = fs::read(require(args, "file")?)?;
+    let records = wire_core::metrics::read_file(&bytes)?;
+    let summary = wire_core::metrics::summarize(&records);
+    print!("{}", wire_core::metrics::format_summary(&summary));
     println!("ok");
     Ok(())
 }

@@ -2,7 +2,52 @@ mod common;
 
 use std::fs;
 
-use common::{join, log_file, ok, party, Relay, Tmp};
+use common::{field, file_contains, join, log_file, ok, party, payload, Relay, Tmp, MARKER};
+
+#[test]
+fn metrics_count_transfers_without_plaintext() {
+    let tmp = Tmp::new();
+    let metrics = tmp.path().join("metrics.bin");
+    let relay = Relay::start_metrics(&tmp.path().join("relay"), &metrics);
+    let a = party(tmp.path(), "a", "1h", "all");
+    let b = party(tmp.path(), "b", "1h", "all");
+    let channel = join(&a, &b, &relay.addr);
+    let data = tmp.path().join("offer.bin");
+    fs::write(&data, payload(8192)).unwrap();
+    ok(&[
+        "send-frame",
+        "--runtime",
+        a.runtime.to_str().unwrap(),
+        "--home",
+        a.home.to_str().unwrap(),
+        "--channel",
+        &channel,
+        "--data-file",
+        data.to_str().unwrap(),
+        "--relay",
+        &relay.addr,
+    ]);
+    let raw = fs::read_to_string(&metrics).unwrap();
+    assert!(raw.starts_with("wire-metrics 1\n"), "{raw}");
+    assert!(raw.contains(" kind=1 "), "{raw}");
+    assert!(!file_contains(&metrics, MARKER));
+    ok(&[
+        "poll",
+        "--runtime",
+        b.runtime.to_str().unwrap(),
+        "--home",
+        b.home.to_str().unwrap(),
+        "--relay",
+        &relay.addr,
+    ]);
+    let report = ok(&["metrics", "--file", metrics.to_str().unwrap()]);
+    assert!(report.contains("ephemeral_transfers 1\n"), "{report}");
+    assert!(report.contains("in_flight 0\n"), "{report}");
+    let bytes: u64 = field(&report, "ephemeral_bytes").parse().unwrap();
+    assert!(bytes > 8192, "ciphertext should cover the payload, got {bytes}");
+    assert!(!report.contains("WIRE-PIXEL"));
+    assert!(!file_contains(&log_file(&a.home, &channel), MARKER));
+}
 
 #[test]
 fn explain_talk_and_log_are_views() {

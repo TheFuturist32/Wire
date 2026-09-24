@@ -41,9 +41,21 @@ pub struct Relay {
 
 impl Relay {
     pub fn start(data: &Path) -> Self {
+        Self::open(data, None)
+    }
+
+    pub fn start_metrics(data: &Path, metrics: &Path) -> Self {
+        Self::open(data, Some(metrics))
+    }
+
+    fn open(data: &Path, metrics: Option<&Path>) -> Self {
         fs::create_dir_all(data).unwrap();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_wire-relay"))
-            .args(["bind", "127.0.0.1:0", "--data", data.to_str().unwrap()])
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_wire-relay"));
+        cmd.args(["bind", "127.0.0.1:0", "--data", data.to_str().unwrap()]);
+        if let Some(path) = metrics {
+            cmd.args(["--metrics", path.to_str().unwrap()]);
+        }
+        let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()

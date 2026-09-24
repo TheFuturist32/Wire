@@ -220,6 +220,34 @@ pub fn seal(
     Ok(w.finish())
 }
 
+pub struct ClearHeader {
+    pub suite: u16,
+    pub kind: u8,
+    pub channel_id: [u8; 32],
+}
+
+/// Reads the clear envelope header only. Does not decrypt.
+pub fn peek_clear(bytes: &[u8]) -> Result<ClearHeader> {
+    let mut r = Reader::new(bytes);
+    let magic = r.take(4)?;
+    if magic != b"WENV" {
+        return Err(Error::new("not an envelope"));
+    }
+    let version = r.u16()?;
+    if version != 1 {
+        return Err(Error::new("bad envelope version"));
+    }
+    Ok(ClearHeader {
+        suite: r.u16()?,
+        kind: r.u8()?,
+        channel_id: {
+            let _sender = r.arr32()?;
+            let _recipient = r.arr32()?;
+            r.arr32()?
+        },
+    })
+}
+
 pub fn open(agree: &AgreeSecret, my_cred_id: &[u8; 32], bytes: &[u8]) -> Result<Envelope> {
     let mut r = Reader::new(bytes);
     let magic = r.take(4)?;
