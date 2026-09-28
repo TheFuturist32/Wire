@@ -1,12 +1,17 @@
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use rand::rngs::OsRng;
+use rand::rngs::SysRng;
+use rand::{rand_core::UnwrapErr, Rng};
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::codec::{Reader, Writer};
 use crate::error::{Error, Result};
+
+fn os_rng() -> UnwrapErr<SysRng> {
+    UnwrapErr(SysRng)
+}
 
 pub const SUITE_CLASSICAL: u16 = 1;
 pub const SUITE_STUB: u16 = 2;
@@ -30,13 +35,13 @@ pub fn now_unix() -> u64 {
 
 pub fn random32() -> [u8; 32] {
     let mut b = [0u8; 32];
-    rand::RngCore::fill_bytes(&mut OsRng, &mut b);
+    os_rng().fill_bytes(&mut b);
     b
 }
 
 pub fn random24() -> [u8; 24] {
     let mut b = [0u8; 24];
-    rand::RngCore::fill_bytes(&mut OsRng, &mut b);
+    os_rng().fill_bytes(&mut b);
     b
 }
 
@@ -47,7 +52,7 @@ pub struct RootSecret {
 impl RootSecret {
     pub fn generate() -> Self {
         Self {
-            sign: SigningKey::generate(&mut OsRng),
+            sign: SigningKey::generate(&mut os_rng()),
         }
     }
 
@@ -81,7 +86,7 @@ pub struct AgreeSecret {
 impl AgreeSecret {
     pub fn generate() -> Self {
         Self {
-            secret: StaticSecret::random_from_rng(OsRng),
+            secret: StaticSecret::random_from_rng(&mut os_rng()),
         }
     }
 
@@ -117,7 +122,7 @@ pub struct SignSecret {
 impl SignSecret {
     pub fn generate() -> Self {
         Self {
-            sign: SigningKey::generate(&mut OsRng),
+            sign: SigningKey::generate(&mut os_rng()),
         }
     }
 
@@ -207,10 +212,10 @@ pub fn seal(
         &nonce,
     );
     let cipher = XChaCha20Poly1305::new_from_slice(&key).map_err(|_| Error::new("bad aead key"))?;
-    let nonce_ga = XNonce::from_slice(&nonce);
+    let nonce_ga = XNonce::from(nonce);
     let ct = cipher
         .encrypt(
-            nonce_ga,
+            &nonce_ga,
             Payload {
                 msg: plaintext,
                 aad: &header,
@@ -280,10 +285,10 @@ pub fn open(agree: &AgreeSecret, my_cred_id: &[u8; 32], bytes: &[u8]) -> Result<
     let shared = agree.shared(&sender_x25519)?;
     let key = seal_key(&shared, &sender_x25519, &my_x);
     let cipher = XChaCha20Poly1305::new_from_slice(&key).map_err(|_| Error::new("bad aead key"))?;
-    let nonce_ga = XNonce::from_slice(&nonce);
+    let nonce_ga = XNonce::from(nonce);
     let plaintext = cipher
         .decrypt(
-            nonce_ga,
+            &nonce_ga,
             Payload {
                 msg: &ct,
                 aad: header,
